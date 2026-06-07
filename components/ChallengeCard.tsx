@@ -21,14 +21,13 @@ export function ChallengeCard({ challenge, record }: Props) {
           <span className="pill">募集職種</span>
           <span className="pill">{challenge.role}</span>
         </div>
-        <h2>
-          {challenge.title}
-        </h2>
+        <h2>{challenge.title}</h2>
         <p className="job-copy">
           求む。AIが書いたもっともらしいPythonを、実行前に疑えるレビュアー。
         </p>
         <p className="panel-muted">
-          選考時間: {challenge.estimatedMinutes}分 / 難易度: {challenge.difficultyLabel}
+          選考時間: {challenge.estimatedMinutes}分 / 難易度:{" "}
+          {challenge.difficultyLabel}
         </p>
       </div>
 
@@ -48,14 +47,6 @@ export function ChallengeCard({ challenge, record }: Props) {
         </div>
       </div>
 
-      <div className="job-brief">
-        <strong>面接課題</strong>
-        <p>
-          仕様書とAI生成コードを照合し、怪しい行を指摘。カテゴリ、失敗パターン、
-          正しい修正を順に選んで、採用ラインを超えてください。
-        </p>
-      </div>
-
       <div className="card-footer">
         <div className="metric-grid">
           <div className="metric light">
@@ -70,7 +61,7 @@ export function ChallengeCard({ challenge, record }: Props) {
         {record && (
           <p className="panel-muted" style={{ margin: 0 }}>
             Played {record.playCount} time{record.playCount === 1 ? "" : "s"}.
-            前回の結果を超えにいく。
+            前回の結果を超えにいこう。
           </p>
         )}
         <Link className="primary-button" href={`/play/${challenge.id}`}>

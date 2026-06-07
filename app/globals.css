@@ -450,7 +450,7 @@ button:disabled {
 
 .challenge-card {
   display: flex;
-  min-height: 360px;
+  min-height: 330px;
   flex-direction: column;
   gap: 18px;
   padding: 22px;
@@ -473,24 +473,57 @@ button:disabled {
   line-height: 1.55;
 }
 
-.job-requirement,
-.job-brief {
+.problem-rule-panel,
+.job-requirement {
   padding: 14px;
   border: 1px solid #d5dfec;
   border-radius: 16px;
   background: #fff;
 }
 
-.job-brief {
+.problem-rule-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  margin: 18px 0 22px;
+  padding: 22px;
   background:
     linear-gradient(135deg, rgba(71, 183, 255, 0.1), rgba(57, 217, 138, 0.06)),
     #ffffff;
+  box-shadow: var(--shadow);
 }
 
-.job-brief p {
-  margin: 8px 0 0;
+.problem-rule-panel h2 {
+  margin: 6px 0 8px;
+  color: var(--panel-ink);
+  font-size: 1.45rem;
+}
+
+.problem-rule-panel p {
+  margin: 0;
   color: var(--panel-muted);
   line-height: 1.58;
+}
+
+.problem-rule-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.problem-rule-steps span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid #cfe0f4;
+  border-radius: 999px;
+  background: #f7fbff;
+  color: #153152;
+  font-size: 0.9rem;
+  font-weight: 850;
 }
 
 .job-meta {
@@ -1340,8 +1373,13 @@ button:disabled {
   .learn-columns,
   .learning-flow,
   .pattern-grid,
-  .pattern-explain {
+  .pattern-explain,
+  .problem-rule-panel {
     grid-template-columns: 1fr;
+  }
+
+  .problem-rule-steps {
+    justify-content: flex-start;
   }
 
   .pattern-actions {
