@@ -22,9 +22,6 @@ export function ChallengeCard({ challenge, record }: Props) {
           <span className="pill">{challenge.role}</span>
         </div>
         <h2>{challenge.title}</h2>
-        <p className="job-copy">
-          求む。AIが書いたもっともらしいPythonを、実行前に疑えるレビュアー。
-        </p>
         <p className="panel-muted">
           選考時間: {challenge.estimatedMinutes}分 / 難易度:{" "}
           {challenge.difficultyLabel}
