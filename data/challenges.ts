@@ -5,7 +5,6 @@ import type {
   ReviewStep,
   ReviewStepKind
 } from "@/lib/types";
-import { generatedChallenges } from "@/data/generatedChallenges";
 
 export const categoryLabels: Record<ReviewCategory, string> = {
   spec: "要件の読み違い",
@@ -1947,18 +1946,7 @@ def get_report(user, report_id, db):
   }
 ];
 
-const generatedDomainVariantCount = 4;
-
-const curatedGeneratedChallenges = generatedChallenges.filter((_, index) => {
-  const patternIndex = Math.floor(index / generatedDomainVariantCount);
-  const domainIndex = index % generatedDomainVariantCount;
-  return domainIndex === patternIndex % generatedDomainVariantCount;
-});
-
-export const challenges: InterviewChallenge[] = [
-  ...baseChallenges,
-  ...curatedGeneratedChallenges
-];
+export const challenges: InterviewChallenge[] = baseChallenges;
 
 export function getChallengeById(id: string) {
   return challenges.find((challenge) => challenge.id === id);
