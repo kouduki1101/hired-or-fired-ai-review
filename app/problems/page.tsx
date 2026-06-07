@@ -8,8 +8,8 @@ export default function ProblemsPage() {
           <p className="eyebrow">Interview Challenges</p>
           <h1 className="section-title">レビュー面接の求人票</h1>
           <p className="muted">
-            AIが書いた「動きそうなコード」を、動かす前に疑えるか。
-            求人票を選び、怪しい行、カテゴリ、失敗パターン、正しい修正まで言い切ってください。
+            同じ型の水増し求人は出さず、レビュー筋が違うものだけを掲載しています。
+            仕様とAI生成コードのズレを読み、怪しい行、カテゴリ、失敗パターン、正しい修正まで言い切ってください。
           </p>
         </div>
       </div>

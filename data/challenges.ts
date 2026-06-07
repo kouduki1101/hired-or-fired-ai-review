@@ -1947,9 +1947,17 @@ def get_report(user, report_id, db):
   }
 ];
 
+const generatedDomainVariantCount = 4;
+
+const curatedGeneratedChallenges = generatedChallenges.filter((_, index) => {
+  const patternIndex = Math.floor(index / generatedDomainVariantCount);
+  const domainIndex = index % generatedDomainVariantCount;
+  return domainIndex === patternIndex % generatedDomainVariantCount;
+});
+
 export const challenges: InterviewChallenge[] = [
   ...baseChallenges,
-  ...generatedChallenges
+  ...curatedGeneratedChallenges
 ];
 
 export function getChallengeById(id: string) {

@@ -3,8 +3,20 @@ import { challenges } from "@/data/challenges";
 import { getCodeLines } from "@/lib/gameEngine";
 
 describe("challenge data integrity", () => {
-  it("has at least 100 interview postings", () => {
-    expect(challenges.length).toBeGreaterThanOrEqual(100);
+  it("keeps the public interview list curated", () => {
+    expect(challenges.length).toBeGreaterThanOrEqual(35);
+    expect(challenges.length).toBeLessThanOrEqual(60);
+  });
+
+  it("does not expose domain-cloned generated challenges as separate postings", () => {
+    const generatedVisible = challenges.filter((challenge) =>
+      /^(supply|billing|hr|learning)-/.test(challenge.id)
+    );
+    const patternKeys = generatedVisible.map((challenge) =>
+      challenge.id.replace(/^(supply|billing|hr|learning)-/, "").replace(/-review$/, "")
+    );
+
+    expect(new Set(patternKeys).size).toBe(patternKeys.length);
   });
 
   it("has unique challenge ids", () => {
