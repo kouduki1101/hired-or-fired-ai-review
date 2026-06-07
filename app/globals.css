@@ -466,11 +466,32 @@ button:disabled {
 }
 
 .problem-rule-panel,
-.job-requirement {
+.job-requirement,
+.job-spec {
   padding: 14px;
   border: 1px solid #d5dfec;
   border-radius: 16px;
   background: #fff;
+}
+
+.job-spec {
+  background:
+    linear-gradient(135deg, rgba(71, 183, 255, 0.08), rgba(57, 217, 138, 0.05)),
+    #ffffff;
+}
+
+.job-spec ul {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--panel-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.job-spec li::marker {
+  color: #1d9bd7;
 }
 
 .problem-rule-panel {

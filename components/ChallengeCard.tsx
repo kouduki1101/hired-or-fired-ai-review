@@ -33,6 +33,15 @@ export function ChallengeCard({ challenge, record }: Props) {
         <span className="pill">{lineCount}行の選考コード</span>
       </div>
 
+      <div className="job-spec">
+        <strong>Requirements</strong>
+        <ul>
+          {challenge.requirements.map((requirement) => (
+            <li key={requirement}>{requirement}</li>
+          ))}
+        </ul>
+      </div>
+
       <div className="job-requirement">
         <strong>この求人で見るレビュー筋</strong>
         <div className="job-meta" style={{ marginTop: 10 }}>
