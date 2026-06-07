@@ -8,7 +8,7 @@ export default function ProblemsPage() {
           <p className="eyebrow">Interview Challenges</p>
           <h1 className="section-title">レビュー面接の求人票</h1>
           <p className="muted">
-            公開しているのは手作りの10件だけです。
+            公開しているのは手作りの30件です。
             仕様とAI生成コードのズレを読み、怪しい行、カテゴリ、失敗パターン、正しい修正まで言い切ってください。
           </p>
         </div>

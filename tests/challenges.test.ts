@@ -4,7 +4,7 @@ import { getCodeLines } from "@/lib/gameEngine";
 
 describe("challenge data integrity", () => {
   it("keeps the public interview list handcrafted", () => {
-    expect(challenges.length).toBe(10);
+    expect(challenges.length).toBe(30);
   });
 
   it("does not expose generated template postings", () => {

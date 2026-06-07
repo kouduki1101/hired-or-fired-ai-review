@@ -1946,7 +1946,2097 @@ def get_report(user, report_id, db):
   }
 ];
 
-export const challenges: InterviewChallenge[] = baseChallenges;
+const additionalHandmadeChallenges: InterviewChallenge[] = [
+  {
+    id: "password-reset-token-leak-review",
+    role: "Security Review Candidate",
+    title: "パスワード再設定APIのトークン漏えいレビュー",
+    difficultyLabel: "Practical",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "再設定トークンはトークンストアで生成する",
+      "トークンはユーザーのメールにだけ送る",
+      "APIレスポンスには成功状態だけを返す",
+      "レスポンス、ログ、例外メッセージにトークンを含めない"
+    ],
+    examples: [
+      "issue_reset_token(user, token_store) -> {'ok': True}",
+      "レスポンスに token キーが含まれていたら不合格"
+    ],
+    constraints: [
+      "秘密値は画面やAPIレスポンスに出さない",
+      "メール送信とAPI応答の責務を分けて見る"
+    ],
+    code: `def issue_reset_token(user, token_store):
+    token = token_store.create(user["id"])
+    send_email(user["email"], f"reset: {token}")
+    return {"ok": True, "token": token}`,
+    challengeHints: [
+      "生成した秘密値がどこへ流れているか追ってください。",
+      "メールに送ることと、APIレスポンスに返すことは別です。",
+      "怪しいのは最後の戻り値です。"
+    ],
+    issues: [
+      {
+        id: "reset-token-returned",
+        title: "再設定トークンをAPIレスポンスに含めている",
+        category: "security",
+        pattern: "sensitive_token_exposed",
+        startLine: 4,
+        endLine: 4,
+        difficulty: 3,
+        summary: "メールで送るべき再設定トークンを、呼び出し元にも返している。",
+        explanation:
+          "再設定トークンはアカウント乗っ取りに直結する秘密値です。メール送信に使った後、APIレスポンスでは成功状態だけを返すべきです。",
+        correctCode: `return {"ok": True}`,
+        hints: [
+          "token は秘密値です。",
+          "レスポンスのキーに token が含まれています。",
+          "4行目は ok だけ返せば十分です。"
+        ],
+        steps: reviewSteps(
+          "security",
+          {
+            id: "sensitive_token_exposed",
+            label: "秘密値のレスポンス漏えい",
+            description: "トークンや認証情報をAPIレスポンスに含めている"
+          },
+          {
+            id: "fix-ok-only",
+            label: "成功状態だけ返す",
+            description: "再設定トークンは返さず、処理成功だけを通知する",
+            code: `return {"ok": True}`
+          },
+          [
+            {
+              id: "fix-mask-token",
+              label: "トークンを一部マスクする",
+              description: "一部でも返すと秘密値の露出が残る"
+            },
+            {
+              id: "fix-email-remove",
+              label: "メール送信を消す",
+              description: "ユーザーが再設定できなくなる"
+            },
+            {
+              id: "fix-return-user",
+              label: "ユーザー情報を返す",
+              description: "不要な個人情報の露出が増える"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "shipping-threshold-surcharge-review",
+    role: "Commerce Logic Reviewer",
+    title: "送料しきい値と海外加算のレビュー",
+    difficultyLabel: "Warm-up",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "購入金額が10000円以上なら基本送料は無料",
+      "購入金額が10000円未満なら基本送料は800円",
+      "配送先がJP以外なら海外加算1200円を追加する",
+      "配送先がJPなら海外加算は不要"
+    ],
+    examples: [
+      "shipping_fee(10000, 'JP') -> 0",
+      "shipping_fee(9000, 'US') -> 2000"
+    ],
+    constraints: [
+      "以上と超過の違いを見る",
+      "国コード条件の向きを確認する"
+    ],
+    code: `def shipping_fee(subtotal, country):
+    fee = 800
+    if subtotal > 10000:
+        fee = 0
+    if country == "JP":
+        fee += 1200
+    return fee`,
+    challengeHints: [
+      "10000円ちょうどのケースを頭で実行してください。",
+      "海外加算がJPに付いていないか確認してください。",
+      "怪しいのは比較演算子と国コード条件です。"
+    ],
+    issues: [
+      {
+        id: "free-shipping-excludes-equal",
+        title: "10000円ちょうどが送料無料にならない",
+        category: "boundary",
+        pattern: "inclusive_threshold_excluded",
+        startLine: 3,
+        endLine: 3,
+        difficulty: 1,
+        summary: "仕様は10000円以上だが、コードは10000円超過だけを無料にしている。",
+        explanation:
+          "「以上」は境界値を含みます。10000円ちょうどの購入で送料800円になるため、条件は >= 10000 にする必要があります。",
+        correctCode: `if subtotal >= 10000:`,
+        hints: [
+          "仕様の『以上』に注目してください。",
+          "10000円ちょうどはどちらに入るべきでしょうか。",
+          "3行目は >= が正しいです。"
+        ],
+        steps: reviewSteps(
+          "boundary",
+          {
+            id: "inclusive_threshold_excluded",
+            label: "境界値を含めていない",
+            description: "以上・以下の条件なのに、超過・未満として実装している"
+          },
+          {
+            id: "fix-gte-threshold",
+            label: "以上条件にする",
+            description: "10000円ちょうども送料無料に含める",
+            code: `if subtotal >= 10000:`
+          },
+          [
+            {
+              id: "fix-lte",
+              label: "10000円以下にする",
+              description: "無料対象が逆になる"
+            },
+            {
+              id: "fix-raise",
+              label: "10000円なら例外にする",
+              description: "仕様にないエラーを増やしている"
+            },
+            {
+              id: "fix-fee-zero",
+              label: "初期送料を0円にする",
+              description: "10000円未満まで無料になってしまう"
+            }
+          ]
+        )
+      },
+      {
+        id: "domestic-surcharge-added",
+        title: "国内配送に海外加算を付けている",
+        category: "logic",
+        pattern: "condition_direction_reversed",
+        startLine: 5,
+        endLine: 6,
+        difficulty: 1,
+        summary: "JP以外に加算すべき1200円を、JPのときに加算している。",
+        explanation:
+          "海外加算は配送先がJP以外のときだけ必要です。条件の向きが逆なので、国内配送が高くなり海外配送が安くなります。",
+        correctCode: `if country != "JP":
+        fee += 1200`,
+        hints: [
+          "海外加算はどの国に付くべきか確認してください。",
+          "現在の条件は country == 'JP' です。",
+          "5行目は != が正しいです。"
+        ],
+        steps: reviewSteps(
+          "logic",
+          {
+            id: "condition_direction_reversed",
+            label: "条件の向きが逆",
+            description: "対象にすべきケースと除外すべきケースが反対になっている"
+          },
+          {
+            id: "fix-not-jp",
+            label: "JP以外に加算する",
+            description: "海外配送だけ1200円を追加する",
+            code: `if country != "JP":
+        fee += 1200`
+          },
+          [
+            {
+              id: "fix-remove-fee",
+              label: "加算処理を削除する",
+              description: "海外送料が表現できなくなる"
+            },
+            {
+              id: "fix-us-only",
+              label: "USだけに加算する",
+              description: "他の海外配送が漏れる"
+            },
+            {
+              id: "fix-negative",
+              label: "JPなら減額する",
+              description: "仕様にない割引を追加している"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "reservation-adjacent-overlap-review",
+    role: "Booking Systems Reviewer",
+    title: "予約時間の隣接判定レビュー",
+    difficultyLabel: "Practical",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "同じ部屋で時間帯が重なる予約は拒否する",
+      "別の部屋の予約は判定対象外",
+      "既存予約の終了時刻と新規予約の開始時刻が同じなら予約可能",
+      "新規予約の終了時刻と既存予約の開始時刻が同じなら予約可能"
+    ],
+    examples: [
+      "existing 10:00-11:00, request 11:00-12:00 -> True",
+      "existing 10:00-11:00, request 10:30-11:30 -> False"
+    ],
+    constraints: [
+      "隣接と重複を分ける",
+      "同じ部屋だけを見る"
+    ],
+    code: `def can_book(existing, request):
+    for booking in existing:
+        if booking["room_id"] != request["room_id"]:
+            continue
+        if request["start"] <= booking["end"] and request["end"] >= booking["start"]:
+            return False
+    return True`,
+    challengeHints: [
+      "11:00終了と11:00開始は重複でしょうか。",
+      "重複条件は境界を含めるべきか考えてください。",
+      "怪しいのは5行目の比較演算子です。"
+    ],
+    issues: [
+      {
+        id: "adjacent-booking-blocked",
+        title: "隣接する予約を重複扱いしている",
+        category: "boundary",
+        pattern: "adjacent_interval_treated_as_overlap",
+        startLine: 5,
+        endLine: 5,
+        difficulty: 2,
+        summary: "終了時刻と開始時刻が同じだけの予約も拒否している。",
+        explanation:
+          "時間帯の重複判定では、隣接は重複ではありません。開始が既存終了より前、かつ終了が既存開始より後の場合だけ重複です。",
+        correctCode: `if request["start"] < booking["end"] and request["end"] > booking["start"]:`,
+        hints: [
+          "等号があると境界ぴったりも重複になります。",
+          "隣り合う予約は許可する仕様です。",
+          "5行目は < と > の組み合わせにします。"
+        ],
+        steps: reviewSteps(
+          "boundary",
+          {
+            id: "adjacent_interval_treated_as_overlap",
+            label: "隣接区間を重複扱い",
+            description: "境界が同じだけの時間帯を、実際に重なっているものとして扱っている"
+          },
+          {
+            id: "fix-open-interval-overlap",
+            label: "等号を外した重複条件にする",
+            description: "隣接は許可し、実際に重なる区間だけ拒否する",
+            code: `if request["start"] < booking["end"] and request["end"] > booking["start"]:`
+          },
+          [
+            {
+              id: "fix-or",
+              label: "andをorにする",
+              description: "ほとんどの予約が重複扱いになる"
+            },
+            {
+              id: "fix-room-remove",
+              label: "部屋判定を消す",
+              description: "別部屋の予約まで拒否する"
+            },
+            {
+              id: "fix-always-true",
+              label: "常に予約可能にする",
+              description: "本当の重複を防げない"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "feature-rollout-percentage-review",
+    role: "Platform Feature Flag Reviewer",
+    title: "Feature Flagの0%配信レビュー",
+    difficultyLabel: "Practical",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "flag.enabled が False なら誰にも配信しない",
+      "excluded_tenants に含まれるテナントには配信しない",
+      "percentage は 0 から 100 の配信率として扱う",
+      "percentage が 0 の場合は誰にも配信しない"
+    ],
+    examples: [
+      "percentage=0 -> False for every user",
+      "user.tenant_id in excluded_tenants -> False"
+    ],
+    constraints: [
+      "0%と100%の境界を見る",
+      "除外テナントは配信率より優先する"
+    ],
+    code: `def is_enabled(user, flag):
+    if not flag["enabled"]:
+        return False
+    bucket = hash(user["id"]) % 100
+    if bucket <= flag["percentage"]:
+        return True
+    return False`,
+    challengeHints: [
+      "0%配信でbucket 0のユーザーはどうなるか見てください。",
+      "excluded_tenants の仕様がコードにありますか。",
+      "配信率の境界と除外条件の2つを見ます。"
+    ],
+    issues: [
+      {
+        id: "zero-percent-enables-bucket-zero",
+        title: "0%配信でも一部ユーザーに有効化される",
+        category: "boundary",
+        pattern: "percentage_boundary_inclusive",
+        startLine: 5,
+        endLine: 6,
+        difficulty: 2,
+        summary: "bucket <= percentage のため、percentage=0 でも bucket=0 が有効になる。",
+        explanation:
+          "bucket は0から99です。0%なら誰にも配信しないため、比較は bucket < percentage にする必要があります。",
+        correctCode: `if bucket < flag["percentage"]:
+        return True`,
+        hints: [
+          "bucket は0になることがあります。",
+          "0%のときに <= 0 は成立します。",
+          "5行目は < が正しいです。"
+        ],
+        steps: reviewSteps(
+          "boundary",
+          {
+            id: "percentage_boundary_inclusive",
+            label: "0%境界を含めている",
+            description: "配信率0%なのに、境界値のユーザーを含めている"
+          },
+          {
+            id: "fix-strict-percentage",
+            label: "配信率未満にする",
+            description: "0%なら0人、100%なら全bucketが対象になる",
+            code: `if bucket < flag["percentage"]:
+        return True`
+          },
+          [
+            {
+              id: "fix-greater",
+              label: "bucket > percentageにする",
+              description: "配信率の意味が逆になる"
+            },
+            {
+              id: "fix-random",
+              label: "randomで判定する",
+              description: "同じユーザーで結果が揺れる"
+            },
+            {
+              id: "fix-plus-one",
+              label: "bucketに1を足す",
+              description: "100%や境界の扱いが分かりにくくなる"
+            }
+          ]
+        )
+      },
+      {
+        id: "excluded-tenants-ignored",
+        title: "除外テナントの指定を見ていない",
+        category: "spec",
+        pattern: "required_guard_missing",
+        startLine: 2,
+        endLine: 3,
+        difficulty: 3,
+        summary: "excluded_tenants に入っているテナントでも、配信率判定に進んでしまう。",
+        explanation:
+          "除外テナントは明示的な拒否条件です。enabled 判定の後、bucket計算より前に tenant_id を確認する必要があります。",
+        correctCode: `if user["tenant_id"] in flag.get("excluded_tenants", []):
+        return False`,
+        hints: [
+          "仕様にある excluded_tenants がコードに出てきません。",
+          "配信率より先に拒否すべき条件です。",
+          "bucket計算の前にガードを入れます。"
+        ],
+        steps: reviewSteps(
+          "spec",
+          {
+            id: "required_guard_missing",
+            label: "必須ガード条件の欠落",
+            description: "仕様にある除外条件がコードに実装されていない"
+          },
+          {
+            id: "fix-excluded-tenant-guard",
+            label: "除外テナントを先に拒否する",
+            description: "対象外テナントには配信率に関係なくFalseを返す",
+            code: `if user["tenant_id"] in flag.get("excluded_tenants", []):
+        return False`
+          },
+          [
+            {
+              id: "fix-after-return",
+              label: "return Trueの後に追加する",
+              description: "到達しないコードになる"
+            },
+            {
+              id: "fix-enabled-remove",
+              label: "enabled判定を削除する",
+              description: "flag全体の停止が効かなくなる"
+            },
+            {
+              id: "fix-percentage-zero",
+              label: "percentageを0に固定する",
+              description: "通常配信ができなくなる"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "csv-import-email-validation-review",
+    role: "Data Import Reviewer",
+    title: "CSVインポートのメール検証レビュー",
+    difficultyLabel: "Practical",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "email は前後の空白を取り除いて検証する",
+      "email に @ がなければエラーとして止める",
+      "不正行を黙ってスキップしない",
+      "age は整数に変換して保存する"
+    ],
+    examples: [
+      "' a@example.com ' -> 'a@example.com'",
+      "'invalid-email' -> ValueError"
+    ],
+    constraints: [
+      "入力の正規化と検証順序を見る",
+      "エラーを黙殺していないか確認する"
+    ],
+    code: `def import_users(rows):
+    users = []
+    for row in rows:
+        email = row["email"]
+        if "@" not in email:
+            continue
+        users.append({"email": email, "age": int(row["age"])})
+    return users`,
+    challengeHints: [
+      "空白付きメールを想像してください。",
+      "不正なメールをcontinueしてよい仕様でしょうか。",
+      "検証前の正規化とエラー契約を見ます。"
+    ],
+    issues: [
+      {
+        id: "email-not-stripped",
+        title: "メールアドレスの前後空白を除去していない",
+        category: "data_flow",
+        pattern: "input_normalization_missing",
+        startLine: 4,
+        endLine: 4,
+        difficulty: 2,
+        summary: "emailをそのまま使っているため、空白付きの値が保存される。",
+        explanation:
+          "CSVには前後空白が混ざりがちです。仕様ではstripしてから検証・保存する必要があります。",
+        correctCode: `email = row["email"].strip()`,
+        hints: [
+          "CSV入力は余計な空白を含みます。",
+          "検証前に正規化する必要があります。",
+          "4行目で strip() します。"
+        ],
+        steps: reviewSteps(
+          "data_flow",
+          {
+            id: "input_normalization_missing",
+            label: "入力正規化漏れ",
+            description: "検証や保存の前に入力値を正規化していない"
+          },
+          {
+            id: "fix-strip-email",
+            label: "stripしてから使う",
+            description: "前後空白を落としてから検証・保存する",
+            code: `email = row["email"].strip()`
+          },
+          [
+            {
+              id: "fix-lower-only",
+              label: "lowerだけかける",
+              description: "前後空白は残る"
+            },
+            {
+              id: "fix-int-email",
+              label: "intに変換する",
+              description: "メールアドレスに対して不正な変換"
+            },
+            {
+              id: "fix-no-change",
+              label: "そのまま使う",
+              description: "空白付き値が保存される"
+            }
+          ]
+        )
+      },
+      {
+        id: "invalid-email-silently-skipped",
+        title: "不正なメール行を黙ってスキップしている",
+        category: "spec",
+        pattern: "invalid_input_silently_ignored",
+        startLine: 5,
+        endLine: 6,
+        difficulty: 3,
+        summary: "仕様ではエラーにすべき不正メールを continue で消している。",
+        explanation:
+          "インポートで黙って行を捨てると、利用者は欠落に気づけません。仕様どおり ValueError などで止めるべきです。",
+        correctCode: `if "@" not in email:
+            raise ValueError(f"invalid email: {email}")`,
+        hints: [
+          "仕様はスキップではなくエラーです。",
+          "continue は行を消してしまいます。",
+          "6行目は例外送出に変えます。"
+        ],
+        steps: reviewSteps(
+          "spec",
+          {
+            id: "invalid_input_silently_ignored",
+            label: "不正入力の黙殺",
+            description: "不正な入力をエラーにせず、何もなかったように捨てている"
+          },
+          {
+            id: "fix-raise-invalid-email",
+            label: "不正メールで例外にする",
+            description: "欠落を隠さず、呼び出し元に失敗を伝える",
+            code: `if "@" not in email:
+            raise ValueError(f"invalid email: {email}")`
+          },
+          [
+            {
+              id: "fix-return-users",
+              label: "その場でusersを返す",
+              description: "残り行の処理が止まり、理由も伝わらない"
+            },
+            {
+              id: "fix-empty-email",
+              label: "空文字に置き換える",
+              description: "不正データが保存される"
+            },
+            {
+              id: "fix-log-only",
+              label: "ログだけ出して続ける",
+              description: "仕様のエラー契約を満たさない"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "pagination-one-based-review",
+    role: "API Pagination Reviewer",
+    title: "1始まりページングの開始位置レビュー",
+    difficultyLabel: "Warm-up",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "page は1始まりで指定する",
+      "page=1 のとき最初の要素から返す",
+      "page が1未満なら ValueError を送出する",
+      "per_page 件だけ返す"
+    ],
+    examples: [
+      "paginate([1,2,3], page=1, per_page=2) -> [1,2]",
+      "paginate([1,2,3], page=2, per_page=2) -> [3]"
+    ],
+    constraints: [
+      "1始まりと0始まりの変換を見る",
+      "不正ページ番号を見逃さない"
+    ],
+    code: `def paginate(items, page, per_page):
+    start = page * per_page
+    end = start + per_page
+    return items[start:end]`,
+    challengeHints: [
+      "page=1, per_page=10ならstartは何になるべきでしょうか。",
+      "page=0は仕様上有効でしょうか。",
+      "2行目に2つの観点があります。"
+    ],
+    issues: [
+      {
+        id: "page-one-skips-first-window",
+        title: "page=1で先頭ページを飛ばしている",
+        category: "boundary",
+        pattern: "one_based_index_not_converted",
+        startLine: 2,
+        endLine: 2,
+        difficulty: 1,
+        summary: "1始まりのpageを0始まりのslice開始位置へ変換していない。",
+        explanation:
+          "page=1ならstartは0です。現在は page * per_page なので、1ページ目でper_page件ぶん飛ばしてしまいます。",
+        correctCode: `start = (page - 1) * per_page`,
+        hints: [
+          "sliceの開始位置は0始まりです。",
+          "page=1ならstart=0です。",
+          "2行目は (page - 1) を使います。"
+        ],
+        steps: reviewSteps(
+          "boundary",
+          {
+            id: "one_based_index_not_converted",
+            label: "1始まりを0始まりに変換していない",
+            description: "ユーザー指定のpage番号と配列indexの基準がずれている"
+          },
+          {
+            id: "fix-page-minus-one",
+            label: "page-1で開始位置を作る",
+            description: "1ページ目をslice開始0に変換する",
+            code: `start = (page - 1) * per_page`
+          },
+          [
+            {
+              id: "fix-plus-one",
+              label: "page+1にする",
+              description: "さらに後ろへずれる"
+            },
+            {
+              id: "fix-end-only",
+              label: "endだけ直す",
+              description: "開始位置のずれが残る"
+            },
+            {
+              id: "fix-zero-start",
+              label: "常にstart=0にする",
+              description: "2ページ目以降が取れなくなる"
+            }
+          ]
+        )
+      },
+      {
+        id: "page-zero-not-rejected",
+        title: "pageが1未満の入力を拒否していない",
+        category: "spec",
+        pattern: "missing_invalid_page_guard",
+        startLine: 2,
+        endLine: 2,
+        difficulty: 2,
+        summary: "page=0 や負数でもslice計算に進んでしまう。",
+        explanation:
+          "仕様ではpageが1未満ならValueErrorです。sliceは負数も動くため、ガードなしだと静かに誤ったページを返します。",
+        correctCode: `if page < 1:
+        raise ValueError("page must be >= 1")`,
+        hints: [
+          "Pythonのsliceは負数でも動きます。",
+          "仕様は例外を要求しています。",
+          "start計算の前にpageを検証します。"
+        ],
+        steps: reviewSteps(
+          "spec",
+          {
+            id: "missing_invalid_page_guard",
+            label: "不正ページ番号の検証漏れ",
+            description: "仕様上拒否すべきpageを計算に流している"
+          },
+          {
+            id: "fix-page-guard",
+            label: "page<1でValueError",
+            description: "slice計算の前に不正入力を止める",
+            code: `if page < 1:
+        raise ValueError("page must be >= 1")`
+          },
+          [
+            {
+              id: "fix-abs",
+              label: "abs(page)にする",
+              description: "不正入力を別の意味に変えてしまう"
+            },
+            {
+              id: "fix-empty",
+              label: "空配列を返す",
+              description: "仕様の例外契約と違う"
+            },
+            {
+              id: "fix-page-one",
+              label: "page=1に丸める",
+              description: "入力ミスを隠してしまう"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "rate-limit-global-bucket-review",
+    role: "API Reliability Reviewer",
+    title: "Rate Limitのグローバル共有バケットレビュー",
+    difficultyLabel: "Intermediate",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "制限は user_id と ip の組み合わせごとに適用する",
+      "直近60秒のリクエストだけ数える",
+      "60秒あたり100回以上なら拒否する",
+      "別ユーザーのアクセスで他ユーザーをブロックしない"
+    ],
+    examples: [
+      "user Aの100回到達でuser Bは影響を受けない",
+      "同じuser_idとipの101回目 -> False"
+    ],
+    constraints: [
+      "バケットキーの粒度を見る",
+      "共有状態が広すぎないか確認する"
+    ],
+    code: `BUCKETS = {}
+
+def allow_request(user_id, ip, now):
+    key = "global"
+    hits = BUCKETS.get(key, [])
+    hits = [t for t in hits if now - t < 60]
+    if len(hits) >= 100:
+        return False
+    hits.append(now)
+    BUCKETS[key] = hits
+    return True`,
+    challengeHints: [
+      "key が誰を表しているか見てください。",
+      "user_id と ip が引数にあるのに使われているでしょうか。",
+      "全員同じバケットなら何が起きるでしょうか。"
+    ],
+    issues: [
+      {
+        id: "rate-limit-global-key",
+        title: "全ユーザーで同じRate Limitバケットを共有している",
+        category: "data_flow",
+        pattern: "state_key_too_coarse",
+        startLine: 4,
+        endLine: 4,
+        difficulty: 3,
+        summary: "keyが固定文字列のため、全ユーザー・全IPのアクセスが同じ制限に入る。",
+        explanation:
+          "仕様では user_id と ip の組み合わせごとに制限します。固定キーでは、あるユーザーの大量アクセスが他ユーザーまでブロックします。",
+        correctCode: `key = (user_id, ip)`,
+        hints: [
+          "key = 'global' は粒度が粗すぎます。",
+          "引数の user_id と ip が未使用です。",
+          "4行目はタプルキーにします。"
+        ],
+        steps: reviewSteps(
+          "data_flow",
+          {
+            id: "state_key_too_coarse",
+            label: "状態キーが粗すぎる",
+            description: "分けるべき利用者や条件を同じ状態として扱っている"
+          },
+          {
+            id: "fix-user-ip-key",
+            label: "user_idとipをキーにする",
+            description: "制限バケットを利用者とIPごとに分離する",
+            code: `key = (user_id, ip)`
+          },
+          [
+            {
+              id: "fix-ip-only",
+              label: "ipだけをキーにする",
+              description: "共有IPのユーザー同士が巻き込まれる"
+            },
+            {
+              id: "fix-user-only",
+              label: "user_idだけをキーにする",
+              description: "仕様のip粒度を落としている"
+            },
+            {
+              id: "fix-no-bucket",
+              label: "BUCKETSを使わない",
+              description: "過去リクエストを数えられない"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "payment-idempotency-order-review",
+    role: "Payment Reliability Reviewer",
+    title: "決済APIの冪等性チェック順序レビュー",
+    difficultyLabel: "Advanced",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "同じ idempotency_key のリクエストは同じ結果を返す",
+      "既存結果がある場合、決済ゲートウェイを再実行しない",
+      "初回だけ gateway.charge を呼び出す",
+      "決済後は idempotency_key と結果を保存する"
+    ],
+    examples: [
+      "同じidempotency_keyの2回目 -> gateway.chargeを呼ばない",
+      "初回 -> chargeして保存する"
+    ],
+    constraints: [
+      "副作用の前に冪等性を確認する",
+      "キャッシュは処理結果の再利用であり、二重実行の後始末ではない"
+    ],
+    code: `def charge_order(order, request, gateway, store):
+    charge = gateway.charge(order["amount"], request["card"])
+    if store.exists(request["idempotency_key"]):
+        return store.get(request["idempotency_key"])
+    store.save(request["idempotency_key"], charge)
+    return charge`,
+    challengeHints: [
+      "gateway.charge は副作用です。",
+      "同じキーの2回目でも先にchargeしていませんか。",
+      "冪等性チェックの順序を見ます。"
+    ],
+    issues: [
+      {
+        id: "charge-before-idempotency-check",
+        title: "冪等性チェックより先に決済を実行している",
+        category: "data_flow",
+        pattern: "side_effect_before_idempotency_check",
+        startLine: 2,
+        endLine: 4,
+        difficulty: 5,
+        summary: "既存結果の確認前に gateway.charge を呼ぶため、リトライで二重課金が起きる。",
+        explanation:
+          "冪等性キーは副作用を起こす前に見る必要があります。既存結果があればchargeを呼ばずに保存済み結果を返します。",
+        correctCode: `if store.exists(request["idempotency_key"]):
+        return store.get(request["idempotency_key"])
+    charge = gateway.charge(order["amount"], request["card"])`,
+        hints: [
+          "chargeは取り消しにくい副作用です。",
+          "store.existsの前にchargeされています。",
+          "冪等性チェックを2行目より前に移動します。"
+        ],
+        steps: reviewSteps(
+          "data_flow",
+          {
+            id: "side_effect_before_idempotency_check",
+            label: "冪等性チェック前の副作用",
+            description: "再実行を防ぐ確認より先に、外部副作用を発生させている"
+          },
+          {
+            id: "fix-idempotency-first",
+            label: "保存済み結果を先に確認する",
+            description: "既存キーなら決済せずに既存結果を返す",
+            code: `if store.exists(request["idempotency_key"]):
+        return store.get(request["idempotency_key"])
+    charge = gateway.charge(order["amount"], request["card"])`
+          },
+          [
+            {
+              id: "fix-delete-key",
+              label: "既存キーを削除する",
+              description: "冪等性の意味がなくなる"
+            },
+            {
+              id: "fix-charge-twice",
+              label: "chargeを再試行する",
+              description: "二重課金リスクが増える"
+            },
+            {
+              id: "fix-return-none",
+              label: "既存キーならNoneを返す",
+              description: "同じ結果を返す仕様を満たさない"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "deadline-timezone-aware-review",
+    role: "Time Handling Reviewer",
+    title: "UTC期限判定のタイムゾーンレビュー",
+    difficultyLabel: "Intermediate",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "deadline_iso はUTCのISO文字列として扱う",
+      "現在時刻もUTCで比較する",
+      "aware datetime と naive datetime を混ぜない",
+      "期限を過ぎていれば True を返す"
+    ],
+    examples: [
+      "deadline='2026-06-07T00:00:00+00:00' はUTC基準で比較する",
+      "ローカルタイムゾーンに依存しない"
+    ],
+    constraints: [
+      "日時のnaive/awareを確認する",
+      "サーバーのローカル時刻に依存していないか見る"
+    ],
+    code: `from datetime import datetime
+
+def is_expired(deadline_iso):
+    deadline = datetime.fromisoformat(deadline_iso)
+    return datetime.now() > deadline`,
+    challengeHints: [
+      "datetime.now() はタイムゾーン付きでしょうか。",
+      "deadline_iso はUTCとして扱う仕様です。",
+      "比較する2つのdatetimeの基準を揃えます。"
+    ],
+    issues: [
+      {
+        id: "timezone-naive-now",
+        title: "ローカルのnaiveな現在時刻でUTC期限を比較している",
+        category: "boundary",
+        pattern: "naive_datetime_compared_with_utc",
+        startLine: 5,
+        endLine: 5,
+        difficulty: 4,
+        summary: "UTC期限に対して datetime.now() のローカルnaive時刻を使っている。",
+        explanation:
+          "期限判定はタイムゾーンのずれがそのままバグになります。UTC基準のaware datetimeで比較すべきです。",
+        correctCode: `return datetime.now(timezone.utc) > deadline`,
+        hints: [
+          "datetime.now() はサーバーローカルです。",
+          "UTCとして扱うなら timezone.utc を使います。",
+          "importにも timezone が必要です。"
+        ],
+        steps: reviewSteps(
+          "boundary",
+          {
+            id: "naive_datetime_compared_with_utc",
+            label: "naive時刻とUTC時刻の混在",
+            description: "タイムゾーンなしの現在時刻でUTC期限を判定している"
+          },
+          {
+            id: "fix-now-utc",
+            label: "UTCの現在時刻で比較する",
+            description: "現在時刻と期限の基準をUTCに揃える",
+            code: `return datetime.now(timezone.utc) > deadline`
+          },
+          [
+            {
+              id: "fix-date-only",
+              label: "日付だけ比較する",
+              description: "時刻単位の期限が失われる"
+            },
+            {
+              id: "fix-string-compare",
+              label: "文字列として比較する",
+              description: "形式差やタイムゾーンで壊れやすい"
+            },
+            {
+              id: "fix-localize-deadline",
+              label: "期限をローカル扱いにする",
+              description: "UTCとして扱う仕様と逆になる"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "retry-policy-broad-except-review",
+    role: "Resilience Reviewer",
+    title: "リトライ処理の例外握りつぶしレビュー",
+    difficultyLabel: "Intermediate",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "リトライ対象は TimeoutError のみ",
+      "ValueError などの非一時的な例外は再送出する",
+      "3回失敗したら最後の TimeoutError を送出する",
+      "失敗を None として成功扱いしない"
+    ],
+    examples: [
+      "TimeoutErrorが3回 -> TimeoutError",
+      "ValueError -> 即時にValueError"
+    ],
+    constraints: [
+      "広すぎるexceptを疑う",
+      "失敗時の戻り値契約を見る"
+    ],
+    code: `def fetch_with_retry(client, url):
+    for _ in range(3):
+        try:
+            return client.get(url)
+        except Exception:
+            pass
+    return None`,
+    challengeHints: [
+      "Exception は何でも捕まえます。",
+      "Noneを返すと呼び出し元は失敗に気づけるでしょうか。",
+      "一時的な失敗だけリトライする仕様です。"
+    ],
+    issues: [
+      {
+        id: "retry-catches-all-exceptions",
+        title: "リトライ対象外の例外まで握りつぶしている",
+        category: "spec",
+        pattern: "overbroad_exception_retry",
+        startLine: 5,
+        endLine: 6,
+        difficulty: 3,
+        summary: "TimeoutErrorだけでなく、ValueErrorなども捕まえてリトライしている。",
+        explanation:
+          "入力不正やプログラムミスはリトライしても直りません。リトライ対象はTimeoutErrorに限定し、他の例外はそのまま出すべきです。",
+        correctCode: `except TimeoutError as exc:
+            last_error = exc`,
+        hints: [
+          "except Exception は広すぎます。",
+          "仕様上のリトライ対象はTimeoutErrorだけです。",
+          "5行目の例外型を絞ります。"
+        ],
+        steps: reviewSteps(
+          "spec",
+          {
+            id: "overbroad_exception_retry",
+            label: "広すぎる例外リトライ",
+            description: "一時的でない失敗までリトライ対象にしている"
+          },
+          {
+            id: "fix-timeout-only",
+            label: "TimeoutErrorだけ捕まえる",
+            description: "非一時的な例外は呼び出し元へ返す",
+            code: `except TimeoutError as exc:
+            last_error = exc`
+          },
+          [
+            {
+              id: "fix-base-exception",
+              label: "BaseExceptionに広げる",
+              description: "KeyboardInterruptなどまで握りつぶす"
+            },
+            {
+              id: "fix-return-empty",
+              label: "空文字を返す",
+              description: "失敗を成功値に見せてしまう"
+            },
+            {
+              id: "fix-no-retry",
+              label: "tryを消す",
+              description: "TimeoutErrorのリトライ要件を満たせない"
+            }
+          ]
+        )
+      },
+      {
+        id: "retry-returns-none-after-failure",
+        title: "リトライ失敗をNoneで隠している",
+        category: "data_flow",
+        pattern: "failure_converted_to_none",
+        startLine: 7,
+        endLine: 7,
+        difficulty: 3,
+        summary: "3回失敗した後に例外ではなくNoneを返している。",
+        explanation:
+          "Noneは通常値として扱われやすく、失敗が後段に伝わりません。最後のTimeoutErrorを送出する契約にすべきです。",
+        correctCode: `raise last_error`,
+        hints: [
+          "仕様は最後のTimeoutErrorを送出です。",
+          "Noneでは失敗理由が消えます。",
+          "7行目は例外送出に変えます。"
+        ],
+        steps: reviewSteps(
+          "data_flow",
+          {
+            id: "failure_converted_to_none",
+            label: "失敗をNoneに変換",
+            description: "例外として扱うべき失敗を通常値に変えて隠している"
+          },
+          {
+            id: "fix-raise-last-error",
+            label: "最後の例外を送出する",
+            description: "呼び出し元が失敗理由を扱えるようにする",
+            code: `raise last_error`
+          },
+          [
+            {
+              id: "fix-return-false",
+              label: "Falseを返す",
+              description: "戻り値契約が曖昧になる"
+            },
+            {
+              id: "fix-return-url",
+              label: "URLを返す",
+              description: "取得結果ではない値が返る"
+            },
+            {
+              id: "fix-pass",
+              label: "passを残す",
+              description: "失敗が隠れたままになる"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "webhook-signature-body-review",
+    role: "Webhook Security Reviewer",
+    title: "Webhook署名検証の順序レビュー",
+    difficultyLabel: "Advanced",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "X-Signatureヘッダーを使って検証する",
+      "署名検証はraw bodyに対して行う",
+      "JSONを信頼して処理する前に署名を検証する",
+      "署名値をpayload内の値として信用しない"
+    ],
+    examples: [
+      "署名不一致 -> PermissionError",
+      "署名一致 -> JSONをparseしてprocessへ渡す"
+    ],
+    constraints: [
+      "信頼境界の前後を確認する",
+      "署名の入力元を見る"
+    ],
+    code: `def handle_webhook(request, secret):
+    payload = request.json()
+    if payload.get("signature") != secret:
+        raise PermissionError("invalid signature")
+    return process(payload)`,
+    challengeHints: [
+      "payloadはまだ信頼できない入力です。",
+      "署名はどこから読む仕様でしょうか。",
+      "raw bodyに対する検証がありません。"
+    ],
+    issues: [
+      {
+        id: "webhook-trusts-payload-signature",
+        title: "payload内の署名値を信用している",
+        category: "security",
+        pattern: "signature_checked_from_untrusted_body",
+        startLine: 2,
+        endLine: 4,
+        difficulty: 5,
+        summary: "未検証のJSONからsignatureを読み、secretと比較している。",
+        explanation:
+          "Webhook署名はヘッダーとraw bodyで検証します。payload自体は検証後に初めて信頼できるため、body内の値を署名として信用してはいけません。",
+        correctCode: `signature = request.headers["X-Signature"]
+    verify_signature(request.raw_body, signature, secret)
+    payload = request.json()`,
+        hints: [
+          "payloadは攻撃者が自由に作れる値です。",
+          "仕様はX-Signatureヘッダーです。",
+          "JSON parseより前にraw bodyを検証します。"
+        ],
+        steps: reviewSteps(
+          "security",
+          {
+            id: "signature_checked_from_untrusted_body",
+            label: "未信頼body由来の署名検証",
+            description: "検証前のpayload内の値を署名として信用している"
+          },
+          {
+            id: "fix-header-raw-body-signature",
+            label: "ヘッダーとraw bodyで検証する",
+            description: "payloadを処理する前に署名を確認する",
+            code: `signature = request.headers["X-Signature"]
+    verify_signature(request.raw_body, signature, secret)
+    payload = request.json()`
+          },
+          [
+            {
+              id: "fix-secret-in-body",
+              label: "secretをbodyに入れる",
+              description: "秘密値を外部入力に混ぜてしまう"
+            },
+            {
+              id: "fix-process-first",
+              label: "process後に検証する",
+              description: "検証前に副作用が起きる"
+            },
+            {
+              id: "fix-ignore-signature",
+              label: "署名検証を削除する",
+              description: "誰でもWebhookを送れる"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "inventory-allocation-priority-review",
+    role: "Supply Allocation Reviewer",
+    title: "在庫配分の優先度ソートレビュー",
+    difficultyLabel: "Practical",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "priority の数値が大きい注文を先に配分する",
+      "在庫が不足する場合は高優先注文から満たす",
+      "配分数量は注文数量と残在庫の小さい方にする",
+      "残在庫が0になったら以降の注文は0配分"
+    ],
+    examples: [
+      "priority=10 の注文は priority=1 より先に配分",
+      "stock=5, qty=8 -> allocated=5"
+    ],
+    constraints: [
+      "昇順と降順を確認する",
+      "高優先の意味を仕様から読む"
+    ],
+    code: `def allocate(stock, orders):
+    result = {}
+    for order in sorted(orders, key=lambda order: order["priority"]):
+        qty = min(stock, order["qty"])
+        result[order["id"]] = qty
+        stock -= qty
+    return result`,
+    challengeHints: [
+      "priorityが大きいほど先です。",
+      "sortedのデフォルトは昇順です。",
+      "3行目の並び順を見てください。"
+    ],
+    issues: [
+      {
+        id: "allocation-sorts-low-priority-first",
+        title: "低優先注文から先に配分している",
+        category: "logic",
+        pattern: "sort_direction_reversed",
+        startLine: 3,
+        endLine: 3,
+        difficulty: 2,
+        summary: "priorityが小さい順に並べているため、高優先注文が後回しになる。",
+        explanation:
+          "仕様ではpriorityの数値が大きい注文を先に扱います。sortedはデフォルト昇順なので、reverse=True が必要です。",
+        correctCode: `for order in sorted(orders, key=lambda order: order["priority"], reverse=True):`,
+        hints: [
+          "sortedは何順でしょうか。",
+          "priority=10とpriority=1の順番を考えてください。",
+          "3行目にreverse=Trueを付けます。"
+        ],
+        steps: reviewSteps(
+          "logic",
+          {
+            id: "sort_direction_reversed",
+            label: "ソート方向が逆",
+            description: "優先度や日付など、並び順の意味を反対に実装している"
+          },
+          {
+            id: "fix-reverse-priority",
+            label: "降順ソートにする",
+            description: "priorityの大きい注文から処理する",
+            code: `for order in sorted(orders, key=lambda order: order["priority"], reverse=True):`
+          },
+          [
+            {
+              id: "fix-sort-id",
+              label: "id順にする",
+              description: "優先度の仕様を無視している"
+            },
+            {
+              id: "fix-no-sort",
+              label: "入力順のまま処理する",
+              description: "高優先注文が先とは限らない"
+            },
+            {
+              id: "fix-min-reverse",
+              label: "minをmaxにする",
+              description: "在庫以上を配分してしまう"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "product-search-filter-and-review",
+    role: "Search API Reviewer",
+    title: "商品検索フィルタのAND条件レビュー",
+    difficultyLabel: "Warm-up",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "category が指定カテゴリと一致する商品だけ返す",
+      "price は max_price 以下の商品だけ返す",
+      "category と price の両方を満たす商品だけ返す",
+      "どちらか片方だけ満たす商品は返さない"
+    ],
+    examples: [
+      "category一致かつprice以下 -> 含める",
+      "categoryだけ一致、price超過 -> 含めない"
+    ],
+    constraints: [
+      "ORとANDの違いを見る",
+      "検索条件が広がりすぎていないか確認する"
+    ],
+    code: `def filter_products(products, query):
+    result = []
+    for product in products:
+        if product["category"] == query["category"] or product["price"] <= query["max_price"]:
+            result.append(product)
+    return result`,
+    challengeHints: [
+      "仕様は両方を満たす商品です。",
+      "orは条件を広げます。",
+      "4行目の論理演算子を見てください。"
+    ],
+    issues: [
+      {
+        id: "search-filter-uses-or",
+        title: "検索条件をORで広げている",
+        category: "logic",
+        pattern: "and_condition_implemented_as_or",
+        startLine: 4,
+        endLine: 5,
+        difficulty: 1,
+        summary: "categoryまたはpriceの片方だけ満たす商品まで返している。",
+        explanation:
+          "検索条件は両方を満たす必要があります。orでは対象が広がりすぎるため、andにする必要があります。",
+        correctCode: `if product["category"] == query["category"] and product["price"] <= query["max_price"]:`,
+        hints: [
+          "片方だけ一致した商品は返すべきでしょうか。",
+          "orはどちらか一方で通ります。",
+          "4行目はandが正しいです。"
+        ],
+        steps: reviewSteps(
+          "logic",
+          {
+            id: "and_condition_implemented_as_or",
+            label: "AND条件をORで実装",
+            description: "両方満たすべき条件を、片方だけで通している"
+          },
+          {
+            id: "fix-search-and",
+            label: "AND条件にする",
+            description: "カテゴリ一致かつ価格上限内の商品だけ返す",
+            code: `if product["category"] == query["category"] and product["price"] <= query["max_price"]:`
+          },
+          [
+            {
+              id: "fix-not-category",
+              label: "categoryを不一致にする",
+              description: "検索対象が逆になる"
+            },
+            {
+              id: "fix-price-greater",
+              label: "priceを上限以上にする",
+              description: "高額商品を返してしまう"
+            },
+            {
+              id: "fix-append-all",
+              label: "全商品をappendする",
+              description: "フィルタがなくなる"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "invoice-tax-rounding-review",
+    role: "Billing Calculation Reviewer",
+    title: "請求税計算の丸め単位レビュー",
+    difficultyLabel: "Intermediate",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "税対象行だけを小計に含める",
+      "税は小計合計に対して一度だけ計算する",
+      "行ごとに丸めない",
+      "最終合計をroundして返す"
+    ],
+    examples: [
+      "2行の税対象は合算してから税計算",
+      "taxable=False の行に税をかけない"
+    ],
+    constraints: [
+      "丸めの単位を見る",
+      "課税対象と非課税対象を分ける"
+    ],
+    code: `def invoice_total(lines, tax_rate):
+    total = 0
+    for line in lines:
+        line_total = round(line["price"] * line["qty"] * (1 + tax_rate))
+        total += line_total
+    return total`,
+    challengeHints: [
+      "税は行ごとではなく小計合計にかけます。",
+      "taxableフラグがコードに出てきますか。",
+      "4行目が処理をまとめすぎています。"
+    ],
+    issues: [
+      {
+        id: "tax-rounded-per-line",
+        title: "税を行ごとに丸めている",
+        category: "spec",
+        pattern: "rounding_granularity_wrong",
+        startLine: 3,
+        endLine: 5,
+        difficulty: 3,
+        summary: "行単位で税込金額をroundしてから合計している。",
+        explanation:
+          "請求では丸め単位が仕様として重要です。行ごとの丸めは合計後丸めと差が出るため、税対象小計を合算してから一度だけroundします。",
+        correctCode: `subtotal = sum(line["price"] * line["qty"] for line in lines if line["taxable"])
+    return round(subtotal * (1 + tax_rate))`,
+        hints: [
+          "roundがforループの中にあります。",
+          "仕様は合計に対して一度だけ税計算です。",
+          "taxableフラグも見てください。"
+        ],
+        steps: reviewSteps(
+          "spec",
+          {
+            id: "rounding_granularity_wrong",
+            label: "丸め単位の誤り",
+            description: "行ごと・合計ごとなど、仕様で決まる丸め位置が違っている"
+          },
+          {
+            id: "fix-taxable-subtotal-round-once",
+            label: "税対象小計を合算して一度だけ丸める",
+            description: "非課税行を除き、合計に税率をかけてからroundする",
+            code: `subtotal = sum(line["price"] * line["qty"] for line in lines if line["taxable"])
+    return round(subtotal * (1 + tax_rate))`
+          },
+          [
+            {
+              id: "fix-round-every-line",
+              label: "行ごとroundのまま",
+              description: "丸め誤差が仕様とずれる"
+            },
+            {
+              id: "fix-all-lines-tax",
+              label: "全行に税をかける",
+              description: "非課税行まで課税される"
+            },
+            {
+              id: "fix-no-tax",
+              label: "税率を使わない",
+              description: "税計算がなくなる"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "event-dedupe-tenant-success-review",
+    role: "Event Processing Reviewer",
+    title: "イベント重複排除のキーと成功記録レビュー",
+    difficultyLabel: "Advanced",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "重複判定は tenant_id と event id の組み合わせで行う",
+      "別テナントの同じevent idは別イベントとして処理する",
+      "処理が成功した後にだけ処理済みとして記録する",
+      "失敗したイベントは再試行できる"
+    ],
+    examples: [
+      "tenant A / id 1 と tenant B / id 1 は別扱い",
+      "apply_eventが失敗したらPROCESSEDに入れない"
+    ],
+    constraints: [
+      "dedupe keyの粒度を見る",
+      "成功前に処理済みにしていないか確認する"
+    ],
+    code: `PROCESSED = set()
+
+def handle_event(event):
+    if event["id"] in PROCESSED:
+        return "duplicate"
+    PROCESSED.add(event["id"])
+    apply_event(event)
+    return "ok"`,
+    challengeHints: [
+      "event id だけでテナントを区別できますか。",
+      "apply_eventが失敗した場合、再試行できるでしょうか。",
+      "keyの作り方とaddの位置を見ます。"
+    ],
+    issues: [
+      {
+        id: "event-dedupe-key-misses-tenant",
+        title: "重複排除キーにtenant_idが含まれていない",
+        category: "data_flow",
+        pattern: "dedupe_key_too_coarse",
+        startLine: 4,
+        endLine: 4,
+        difficulty: 4,
+        summary: "event idだけで重複判定しているため、別テナントの同じidが重複扱いになる。",
+        explanation:
+          "マルチテナントではidの衝突範囲を明確にする必要があります。tenant_idとevent idの組み合わせをキーにします。",
+        correctCode: `key = (event["tenant_id"], event["id"])`,
+        hints: [
+          "event idは全テナントで一意とは限りません。",
+          "tenant_idが仕様にあります。",
+          "重複判定用のkeyを作ります。"
+        ],
+        steps: reviewSteps(
+          "data_flow",
+          {
+            id: "dedupe_key_too_coarse",
+            label: "重複排除キーが粗すぎる",
+            description: "区別すべきスコープをkeyに含めていない"
+          },
+          {
+            id: "fix-event-tenant-key",
+            label: "tenant_idとidをキーにする",
+            description: "テナントごとにイベント重複を分離する",
+            code: `key = (event["tenant_id"], event["id"])`
+          },
+          [
+            {
+              id: "fix-id-only",
+              label: "idだけのまま",
+              description: "別テナントのイベントが衝突する"
+            },
+            {
+              id: "fix-tenant-only",
+              label: "tenant_idだけにする",
+              description: "同一テナントの全イベントが重複扱いになる"
+            },
+            {
+              id: "fix-random-key",
+              label: "ランダムキーにする",
+              description: "重複を検出できなくなる"
+            }
+          ]
+        )
+      },
+      {
+        id: "event-marked-before-success",
+        title: "処理成功前に処理済みとして記録している",
+        category: "data_flow",
+        pattern: "success_marker_written_before_side_effect",
+        startLine: 6,
+        endLine: 7,
+        difficulty: 4,
+        summary: "apply_eventが失敗してもPROCESSEDに残り、再試行できなくなる。",
+        explanation:
+          "処理済みマークは副作用が成功した後に書くべきです。先に書くと、一時障害でイベントを永久に失います。",
+        correctCode: `apply_event(event)
+    PROCESSED.add(key)`,
+        hints: [
+          "apply_eventが例外を出すケースを考えてください。",
+          "先にaddすると再試行がduplicateになります。",
+          "成功後にPROCESSEDへ追加します。"
+        ],
+        steps: reviewSteps(
+          "data_flow",
+          {
+            id: "success_marker_written_before_side_effect",
+            label: "成功前の処理済み記録",
+            description: "副作用が成功する前に完了マークを書いている"
+          },
+          {
+            id: "fix-mark-after-success",
+            label: "成功後に処理済みにする",
+            description: "失敗時は再試行できるようにする",
+            code: `apply_event(event)
+    PROCESSED.add(key)`
+          },
+          [
+            {
+              id: "fix-never-mark",
+              label: "処理済み記録を消す",
+              description: "重複イベントを毎回処理してしまう"
+            },
+            {
+              id: "fix-return-before-apply",
+              label: "apply前にokを返す",
+              description: "実処理が行われない"
+            },
+            {
+              id: "fix-catch-ignore",
+              label: "例外を握りつぶす",
+              description: "失敗が隠れて再試行もできない"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "audit-log-pii-mask-review",
+    role: "Privacy Review Candidate",
+    title: "監査ログの個人情報マスキングレビュー",
+    difficultyLabel: "Practical",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "監査ログには user_id と action を残す",
+      "email はドメインだけ分かる形にマスクする",
+      "phone は末尾4桁だけ残す",
+      "生のemailやphoneをログに出さない"
+    ],
+    examples: [
+      "alice@example.com -> ***@example.com",
+      "09012345678 -> *******5678"
+    ],
+    constraints: [
+      "ログは外部流出しやすい前提で見る",
+      "識別子と個人情報を分ける"
+    ],
+    code: `def create_audit_log(user):
+    return {
+        "user_id": user["id"],
+        "email": user["email"],
+        "phone": user["phone"],
+        "action": "profile_view",
+    }`,
+    challengeHints: [
+      "監査ログは長期保存されます。",
+      "emailとphoneがそのまま出ていないか見てください。",
+      "識別に必要な情報と不要なPIIを分けます。"
+    ],
+    issues: [
+      {
+        id: "audit-log-raw-pii",
+        title: "監査ログに生のemailとphoneを出している",
+        category: "security",
+        pattern: "pii_written_to_log",
+        startLine: 4,
+        endLine: 5,
+        difficulty: 3,
+        summary: "マスキングすべき個人情報をそのままログ用dictに入れている。",
+        explanation:
+          "ログは参照範囲が広く保存期間も長いため、最小限の情報だけにします。emailとphoneは仕様どおりマスクします。",
+        correctCode: `"email": mask_email(user["email"]),
+        "phone": mask_phone(user["phone"]),`,
+        hints: [
+          "生のemailが残っています。",
+          "phoneもマスク要件があります。",
+          "4〜5行目はmask関数を通します。"
+        ],
+        steps: reviewSteps(
+          "security",
+          {
+            id: "pii_written_to_log",
+            label: "ログへのPII出力",
+            description: "ログに不要な個人情報をそのまま書き込んでいる"
+          },
+          {
+            id: "fix-mask-pii",
+            label: "emailとphoneをマスクする",
+            description: "監査に必要な粒度だけ残し、生値を出さない",
+            code: `"email": mask_email(user["email"]),
+        "phone": mask_phone(user["phone"]),`
+          },
+          [
+            {
+              id: "fix-remove-user-id",
+              label: "user_idを削除する",
+              description: "監査対象を追跡できなくなる"
+            },
+            {
+              id: "fix-hash-action",
+              label: "actionをハッシュ化する",
+              description: "何をしたログか分からなくなる"
+            },
+            {
+              id: "fix-email-only",
+              label: "emailだけマスクする",
+              description: "phoneの生値が残る"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "config-timeout-env-review",
+    role: "Runtime Config Reviewer",
+    title: "環境変数タイムアウトの型変換レビュー",
+    difficultyLabel: "Warm-up",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "REQUEST_TIMEOUT が未設定なら30を返す",
+      "REQUEST_TIMEOUT が設定されていれば整数に変換して返す",
+      "戻り値は常にintにする",
+      "文字列のまま呼び出し元に渡さない"
+    ],
+    examples: [
+      "REQUEST_TIMEOUT unset -> 30",
+      "REQUEST_TIMEOUT='5' -> 5"
+    ],
+    constraints: [
+      "環境変数は文字列で返る",
+      "デフォルト値と型を同時に見る"
+    ],
+    code: `import os
+
+def get_timeout():
+    timeout = os.getenv("REQUEST_TIMEOUT") or 30
+    return timeout`,
+    challengeHints: [
+      "os.getenvの戻り値の型は何でしょうか。",
+      "設定されている場合と未設定の場合で型が変わっていませんか。",
+      "戻り値は常にintである必要があります。"
+    ],
+    issues: [
+      {
+        id: "timeout-return-type-string",
+        title: "環境変数が設定されていると文字列を返す",
+        category: "data_flow",
+        pattern: "env_value_not_cast",
+        startLine: 4,
+        endLine: 5,
+        difficulty: 2,
+        summary: "REQUEST_TIMEOUT='5' のとき、intではなく文字列'5'を返す。",
+        explanation:
+          "環境変数は文字列として読み込まれます。呼び出し元が数値比較やsleepに使うなら、必ずintへ変換します。",
+        correctCode: `return int(os.getenv("REQUEST_TIMEOUT", "30"))`,
+        hints: [
+          "os.getenvは文字列を返します。",
+          "未設定時だけintの30になります。",
+          "読み込み時にintへ変換します。"
+        ],
+        steps: reviewSteps(
+          "data_flow",
+          {
+            id: "env_value_not_cast",
+            label: "環境変数の型変換漏れ",
+            description: "文字列で読み込んだ設定値を、必要な型に変換していない"
+          },
+          {
+            id: "fix-int-env-default",
+            label: "文字列デフォルトごとint変換する",
+            description: "設定あり・なしの両方でintを返す",
+            code: `return int(os.getenv("REQUEST_TIMEOUT", "30"))`
+          },
+          [
+            {
+              id: "fix-str-default",
+              label: "デフォルトを'30'にするだけ",
+              description: "戻り値が常に文字列になる"
+            },
+            {
+              id: "fix-float",
+              label: "floatに変換する",
+              description: "仕様のintと違う"
+            },
+            {
+              id: "fix-no-default",
+              label: "デフォルトを消す",
+              description: "未設定時の要件を満たせない"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "async-gather-return-review",
+    role: "Async Python Reviewer",
+    title: "非同期APIの結果返却レビュー",
+    difficultyLabel: "Advanced",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "profile と orders を非同期に取得する",
+      "戻り値には実データを入れる",
+      "coroutine object を呼び出し元に返さない",
+      "2つの取得は並列実行してよい"
+    ],
+    examples: [
+      "return {'profile': dict, 'orders': list}",
+      "return {'profile': coroutine, ...} は不合格"
+    ],
+    constraints: [
+      "awaitされていないcoroutineを探す",
+      "並列化と未実行を混同しない"
+    ],
+    code: `async def load_profile(user_id, api):
+    profile_task = api.profile(user_id)
+    orders_task = api.orders(user_id)
+    return {"profile": profile_task, "orders": orders_task}`,
+    challengeHints: [
+      "profile_taskとorders_taskは実データでしょうか。",
+      "async関数内でも呼ぶだけでは実行結果になりません。",
+      "return前にawaitが必要です。"
+    ],
+    issues: [
+      {
+        id: "async-coroutines-returned",
+        title: "awaitしていないcoroutineをそのまま返している",
+        category: "data_flow",
+        pattern: "coroutine_returned_without_await",
+        startLine: 2,
+        endLine: 4,
+        difficulty: 4,
+        summary: "api.profile/api.ordersの結果を待たず、coroutine objectを返している。",
+        explanation:
+          "非同期関数の呼び出し結果はawaitしなければ実データになりません。並列化したい場合も gather などで完了を待ちます。",
+        correctCode: `profile, orders = await asyncio.gather(
+        api.profile(user_id),
+        api.orders(user_id),
+    )
+    return {"profile": profile, "orders": orders}`,
+        hints: [
+          "変数名はtaskですが、create_taskもawaitもありません。",
+          "returnしているのは完了結果ではありません。",
+          "asyncio.gatherで2つを待てます。"
+        ],
+        steps: reviewSteps(
+          "data_flow",
+          {
+            id: "coroutine_returned_without_await",
+            label: "await前のcoroutine返却",
+            description: "非同期処理の完了結果ではなく、未実行または未完了のオブジェクトを返している"
+          },
+          {
+            id: "fix-gather-await",
+            label: "gatherで待って実データを返す",
+            description: "profileとordersを並列に待ってからdictに入れる",
+            code: `profile, orders = await asyncio.gather(
+        api.profile(user_id),
+        api.orders(user_id),
+    )
+    return {"profile": profile, "orders": orders}`
+          },
+          [
+            {
+              id: "fix-return-tasks",
+              label: "task名のまま返す",
+              description: "実データではない"
+            },
+            {
+              id: "fix-sync-call",
+              label: "asyncを消す",
+              description: "非同期API呼び出しの前提と合わない"
+            },
+            {
+              id: "fix-await-one",
+              label: "profileだけawaitする",
+              description: "ordersのcoroutineが残る"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "money-cents-float-review",
+    role: "Money Calculation Reviewer",
+    title: "クーポン割引のセント計算レビュー",
+    difficultyLabel: "Intermediate",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "price_cents は整数のセント額",
+      "coupon_percent は0から100の整数",
+      "戻り値も整数のセント額にする",
+      "金額計算にfloatを混ぜない"
+    ],
+    examples: [
+      "apply_coupon(1000, 15) -> 850",
+      "apply_coupon(999, 10) -> 900"
+    ],
+    constraints: [
+      "金額の単位を確認する",
+      "floatが混ざっていないか見る"
+    ],
+    code: `def apply_coupon(price_cents, coupon_percent):
+    discount = price_cents * (coupon_percent / 100)
+    return price_cents - discount`,
+    challengeHints: [
+      "price_centsは整数です。",
+      "/ はPythonでfloatを作ります。",
+      "戻り値の型がintのままか確認してください。"
+    ],
+    issues: [
+      {
+        id: "money-cents-becomes-float",
+        title: "セント金額計算にfloatを混ぜている",
+        category: "data_flow",
+        pattern: "money_amount_converted_to_float",
+        startLine: 2,
+        endLine: 3,
+        difficulty: 3,
+        summary: "coupon_percent / 100 によりdiscountがfloatになり、戻り値もfloatになる。",
+        explanation:
+          "金額をセント整数で扱う設計なら、途中でfloatにしてはいけません。整数除算で割引額を作り、戻り値もintにします。",
+        correctCode: `discount = price_cents * coupon_percent // 100
+    return price_cents - discount`,
+        hints: [
+          "Pythonの / はfloat除算です。",
+          "戻り値は整数セントである必要があります。",
+          "// を使って整数の割引額を作ります。"
+        ],
+        steps: reviewSteps(
+          "data_flow",
+          {
+            id: "money_amount_converted_to_float",
+            label: "金額のfloat化",
+            description: "整数で扱うべき金額にfloatを混ぜている"
+          },
+          {
+            id: "fix-integer-cents",
+            label: "整数セントのまま計算する",
+            description: "割引額を整数で計算し、intを返す",
+            code: `discount = price_cents * coupon_percent // 100
+    return price_cents - discount`
+          },
+          [
+            {
+              id: "fix-round-float",
+              label: "最後にroundする",
+              description: "途中でfloatにする設計が残る"
+            },
+            {
+              id: "fix-yen",
+              label: "円に変換して返す",
+              description: "戻り値の単位が変わる"
+            },
+            {
+              id: "fix-string",
+              label: "文字列にする",
+              description: "計算結果として使いにくくなる"
+            }
+          ]
+        )
+      }
+    ]
+  },
+  {
+    id: "soft-delete-owner-review",
+    role: "Authorization Review Candidate",
+    title: "ドキュメント削除の所有者確認レビュー",
+    difficultyLabel: "Advanced",
+    estimatedMinutes: 5,
+    timeLimitSeconds: 300,
+    codeLanguage: "python",
+    requirements: [
+      "所有者確認は認証済みsession_user.idで行う",
+      "request bodyのowner_idを信用しない",
+      "削除は物理削除ではなくsoft deleteにする",
+      "権限がなければ PermissionError を送出する"
+    ],
+    examples: [
+      "session_user.id != doc.owner_id -> PermissionError",
+      "削除時はdeleted_atを設定する"
+    ],
+    constraints: [
+      "認可に使う入力元を確認する",
+      "物理削除と論理削除の違いを見る"
+    ],
+    code: `def delete_document(request, db):
+    doc = db.get_document(request["document_id"])
+    if doc["owner_id"] != request["owner_id"]:
+        raise PermissionError("forbidden")
+    db.delete(doc["id"])
+    return True`,
+    challengeHints: [
+      "requestのowner_idは誰が送れる値でしょうか。",
+      "認証済みユーザー情報が使われていません。",
+      "deleteはsoft delete仕様と合っていますか。"
+    ],
+    issues: [
+      {
+        id: "owner-id-trusted-from-request",
+        title: "request bodyのowner_idで認可している",
+        category: "security",
+        pattern: "authorization_uses_untrusted_request_field",
+        startLine: 3,
+        endLine: 4,
+        difficulty: 5,
+        summary: "攻撃者が書き換えられるrequest['owner_id']を所有者判定に使っている。",
+        explanation:
+          "認可は信頼済みの認証コンテキストで行います。request bodyのowner_idは自己申告なので、session_user.idと比較すべきです。",
+        correctCode: `if doc["owner_id"] != request["session_user"]["id"]:
+        raise PermissionError("forbidden")`,
+        hints: [
+          "request bodyはユーザーが送れる値です。",
+          "所有者判定に自己申告値を使っています。",
+          "認証済みsession_user.idを使います。"
+        ],
+        steps: reviewSteps(
+          "security",
+          {
+            id: "authorization_uses_untrusted_request_field",
+            label: "未信頼入力による認可",
+            description: "権限判定に、攻撃者が変更できるリクエスト値を使っている"
+          },
+          {
+            id: "fix-session-user-owner",
+            label: "session_user.idで確認する",
+            description: "信頼済みの認証コンテキストを使って所有者判定する",
+            code: `if doc["owner_id"] != request["session_user"]["id"]:
+        raise PermissionError("forbidden")`
+          },
+          [
+            {
+              id: "fix-no-owner-check",
+              label: "所有者確認を削除する",
+              description: "誰でも削除できる"
+            },
+            {
+              id: "fix-document-id",
+              label: "document_idで比較する",
+              description: "所有者とは別の値を比べている"
+            },
+            {
+              id: "fix-return-false",
+              label: "Falseを返す",
+              description: "認可の入力元問題は残る"
+            }
+          ]
+        )
+      },
+      {
+        id: "physical-delete-instead-soft-delete",
+        title: "soft delete仕様なのに物理削除している",
+        category: "spec",
+        pattern: "hard_delete_instead_of_soft_delete",
+        startLine: 5,
+        endLine: 5,
+        difficulty: 3,
+        summary: "deleted_atを設定すべきところで db.delete を呼んでいる。",
+        explanation:
+          "監査や復旧が必要な文書削除ではsoft deleteが求められます。物理削除は履歴も復旧余地も失います。",
+        correctCode: `db.mark_deleted(doc["id"], deleted_at=now())`,
+        hints: [
+          "仕様はsoft deleteです。",
+          "db.deleteは物理削除に見えます。",
+          "5行目はdeleted_at設定に変えます。"
+        ],
+        steps: reviewSteps(
+          "spec",
+          {
+            id: "hard_delete_instead_of_soft_delete",
+            label: "論理削除仕様の物理削除",
+            description: "deleted_atなどで残すべきデータを完全削除している"
+          },
+          {
+            id: "fix-mark-deleted",
+            label: "deleted_atを設定する",
+            description: "文書を残したまま削除状態にする",
+            code: `db.mark_deleted(doc["id"], deleted_at=now())`
+          },
+          [
+            {
+              id: "fix-delete-again",
+              label: "db.deleteのまま",
+              description: "soft delete要件を満たさない"
+            },
+            {
+              id: "fix-return-only",
+              label: "Trueだけ返す",
+              description: "削除状態が保存されない"
+            },
+            {
+              id: "fix-clear-owner",
+              label: "owner_idを消す",
+              description: "所有者情報が失われるだけで削除状態ではない"
+            }
+          ]
+        )
+      }
+    ]
+  }
+];
+
+export const challenges: InterviewChallenge[] = [
+  ...baseChallenges,
+  ...additionalHandmadeChallenges
+];
 
 export function getChallengeById(id: string) {
   return challenges.find((challenge) => challenge.id === id);
