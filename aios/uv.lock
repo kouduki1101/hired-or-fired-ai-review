@@ -9,10 +9,28 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "aios-adapters",
     "aios-api",
     "aios-common",
     "aios-core",
+    "aios-orchestrator",
     "aios-workspace",
+]
+
+[[package]]
+name = "aios-adapters"
+version = "0.1.0"
+source = { editable = "packages/adapters" }
+dependencies = [
+    { name = "aios-core" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aios-core", editable = "packages/core" },
+    { name = "numpy", specifier = ">=1.26" },
 ]
 
 [[package]]
@@ -62,15 +80,37 @@ dependencies = [
 requires-dist = [{ name = "numpy", specifier = ">=1.26" }]
 
 [[package]]
+name = "aios-orchestrator"
+version = "0.1.0"
+source = { editable = "apps/orchestrator" }
+dependencies = [
+    { name = "aios-adapters" },
+    { name = "aios-common" },
+    { name = "aios-core" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aios-adapters", editable = "packages/adapters" },
+    { name = "aios-common", editable = "packages/common" },
+    { name = "aios-core", editable = "packages/core" },
+    { name = "numpy", specifier = ">=1.26" },
+]
+
+[[package]]
 name = "aios-workspace"
 version = "0.1.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
 dev = [
+    { name = "aios-adapters" },
     { name = "aios-api" },
     { name = "aios-common" },
     { name = "aios-core" },
+    { name = "aios-orchestrator" },
     { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
@@ -82,9 +122,11 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "aios-adapters", editable = "packages/adapters" },
     { name = "aios-api", editable = "apps/api" },
     { name = "aios-common", editable = "packages/common" },
     { name = "aios-core", editable = "packages/core" },
+    { name = "aios-orchestrator", editable = "apps/orchestrator" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "mypy", specifier = ">=1.13" },
     { name = "pytest", specifier = ">=8.0" },

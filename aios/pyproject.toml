@@ -6,7 +6,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [tool.uv.workspace]
-members = ["packages/core", "packages/common", "apps/api"]
+members = ["packages/core", "packages/common", "packages/adapters", "apps/api", "apps/orchestrator"]
 
 [dependency-groups]
 dev = [
@@ -17,13 +17,17 @@ dev = [
     "mypy>=1.13",
     "aios-core",
     "aios-common",
+    "aios-adapters",
     "aios-api",
+    "aios-orchestrator",
 ]
 
 [tool.uv.sources]
 aios-core = { workspace = true }
 aios-common = { workspace = true }
+aios-adapters = { workspace = true }
 aios-api = { workspace = true }
+aios-orchestrator = { workspace = true }
 
 [tool.ruff]
 line-length = 100
@@ -38,5 +42,11 @@ strict = true
 mypy_path = ["packages/core/src", "packages/common/src", "apps/api/src"]
 
 [tool.pytest.ini_options]
-testpaths = ["packages/core/tests", "packages/common/tests", "apps/api/tests"]
+testpaths = [
+    "packages/core/tests",
+    "packages/common/tests",
+    "packages/adapters/tests",
+    "apps/api/tests",
+    "apps/orchestrator/tests",
+]
 asyncio_mode = "auto"
