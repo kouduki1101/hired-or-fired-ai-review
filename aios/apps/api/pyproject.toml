@@ -6,13 +6,18 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
+    "numpy>=1.26",
     "aios-core",
     "aios-common",
+    "aios-adapters",
+    "aios-orchestrator",
 ]
 
 [tool.uv.sources]
 aios-core = { workspace = true }
 aios-common = { workspace = true }
+aios-adapters = { workspace = true }
+aios-orchestrator = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

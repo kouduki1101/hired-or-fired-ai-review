@@ -6,7 +6,14 @@ requires-python = ">=3.11"
 dependencies = []
 
 [tool.uv.workspace]
-members = ["packages/core", "packages/common", "packages/adapters", "apps/api", "apps/orchestrator"]
+members = [
+    "packages/core",
+    "packages/common",
+    "packages/adapters",
+    "packages/storage",
+    "apps/api",
+    "apps/orchestrator",
+]
 
 [dependency-groups]
 dev = [
@@ -15,9 +22,11 @@ dev = [
     "httpx>=0.27",
     "ruff>=0.8",
     "mypy>=1.13",
+    "aiosqlite>=0.20",
     "aios-core",
     "aios-common",
     "aios-adapters",
+    "aios-storage",
     "aios-api",
     "aios-orchestrator",
 ]
@@ -26,6 +35,7 @@ dev = [
 aios-core = { workspace = true }
 aios-common = { workspace = true }
 aios-adapters = { workspace = true }
+aios-storage = { workspace = true }
 aios-api = { workspace = true }
 aios-orchestrator = { workspace = true }
 
@@ -46,6 +56,7 @@ testpaths = [
     "packages/core/tests",
     "packages/common/tests",
     "packages/adapters/tests",
+    "packages/storage/tests",
     "apps/api/tests",
     "apps/orchestrator/tests",
 ]
