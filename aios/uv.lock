@@ -14,6 +14,7 @@ members = [
     "aios-common",
     "aios-core",
     "aios-orchestrator",
+    "aios-sdk",
     "aios-storage",
     "aios-workspace",
 ]
@@ -110,6 +111,17 @@ requires-dist = [
 ]
 
 [[package]]
+name = "aios-sdk"
+version = "0.1.0"
+source = { editable = "packages/sdk-python" }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "httpx", specifier = ">=0.27" }]
+
+[[package]]
 name = "aios-storage"
 version = "0.1.0"
 source = { editable = "packages/storage" }
@@ -150,6 +162,7 @@ dev = [
     { name = "aios-common" },
     { name = "aios-core" },
     { name = "aios-orchestrator" },
+    { name = "aios-sdk" },
     { name = "aios-storage" },
     { name = "aiosqlite" },
     { name = "httpx" },
@@ -168,6 +181,7 @@ dev = [
     { name = "aios-common", editable = "packages/common" },
     { name = "aios-core", editable = "packages/core" },
     { name = "aios-orchestrator", editable = "apps/orchestrator" },
+    { name = "aios-sdk", editable = "packages/sdk-python" },
     { name = "aios-storage", editable = "packages/storage" },
     { name = "aiosqlite", specifier = ">=0.20" },
     { name = "httpx", specifier = ">=0.27" },

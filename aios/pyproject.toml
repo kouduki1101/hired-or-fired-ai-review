@@ -11,6 +11,7 @@ members = [
     "packages/common",
     "packages/adapters",
     "packages/storage",
+    "packages/sdk-python",
     "apps/api",
     "apps/orchestrator",
 ]
@@ -27,6 +28,7 @@ dev = [
     "aios-common",
     "aios-adapters",
     "aios-storage",
+    "aios-sdk",
     "aios-api",
     "aios-orchestrator",
 ]
@@ -36,6 +38,7 @@ aios-core = { workspace = true }
 aios-common = { workspace = true }
 aios-adapters = { workspace = true }
 aios-storage = { workspace = true }
+aios-sdk = { workspace = true }
 aios-api = { workspace = true }
 aios-orchestrator = { workspace = true }
 
@@ -59,6 +62,7 @@ testpaths = [
     "packages/common/tests",
     "packages/adapters/tests",
     "packages/storage/tests",
+    "packages/sdk-python/tests",
     "apps/api/tests",
     "apps/orchestrator/tests",
 ]
