@@ -95,6 +95,7 @@ dependencies = [
     { name = "aios-adapters" },
     { name = "aios-common" },
     { name = "aios-core" },
+    { name = "aios-storage" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
@@ -104,6 +105,7 @@ requires-dist = [
     { name = "aios-adapters", editable = "packages/adapters" },
     { name = "aios-common", editable = "packages/common" },
     { name = "aios-core", editable = "packages/core" },
+    { name = "aios-storage", editable = "packages/storage" },
     { name = "numpy", specifier = ">=1.26" },
 ]
 

@@ -3,12 +3,13 @@ name = "aios-orchestrator"
 version = "0.1.0"
 description = "AIOS control loop: phase FSM, hatchery, cycle engine"
 requires-python = ">=3.11"
-dependencies = ["numpy>=1.26", "aios-core", "aios-common", "aios-adapters"]
+dependencies = ["numpy>=1.26", "aios-core", "aios-common", "aios-adapters", "aios-storage"]
 
 [tool.uv.sources]
 aios-core = { workspace = true }
 aios-common = { workspace = true }
 aios-adapters = { workspace = true }
+aios-storage = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
