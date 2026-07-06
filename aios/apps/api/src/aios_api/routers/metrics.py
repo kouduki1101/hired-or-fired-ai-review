@@ -126,8 +126,14 @@ async def run_control_cycle(cohort_id: str, dry_run: bool = False) -> CycleSumma
     if loop_state == "PAUSED":
         raise HTTPException(status_code=409, detail="control loop is paused")
     effective_dry_run = dry_run or loop_state == "DRY_RUN"
+    previous = STORE.last_cycle(cohort_id)
     result = await run_cycle(cohort, CycleConfig(dry_run=effective_dry_run))
     STORE.set_last_cycle(cohort_id, result)
+    # Webhook通知(FR-EX-01)と永続化
+    await STORE.notifier.emit_from_cycle(
+        cohort_id, str(previous.health) if previous else None, result
+    )
+    await STORE.persist(cohort_id)
     return _summary(result)
 
 

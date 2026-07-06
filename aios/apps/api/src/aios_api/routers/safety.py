@@ -110,6 +110,11 @@ async def quarantine_slot(cohort_id: str, slot_id: str) -> SlotSafetyResponse:
     slot.status = SlotStatus.QUARANTINED
     slot.record(SlotEventType.QUARANTINED, {"centroid": "manual", "similarity": 1.0},
                 datetime.now(UTC))
+    await STORE.notifier.emit(
+        "slot.quarantined",
+        {"cohort_id": cohort_id, "slot_id": slot_id, "label": "manual", "similarity": 1.0},
+    )
+    await STORE.persist(cohort_id)
     return SlotSafetyResponse(
         slot_id=slot.slot_id,
         display_id=slot.display_id,
@@ -136,6 +141,7 @@ async def restore_slot(cohort_id: str, slot_id: str) -> RestoreResponse:
         raise HTTPException(status_code=404, detail="slot not found") from None
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e)) from None
+    await STORE.persist(cohort_id)
     return RestoreResponse(
         slot_id=slot_id, restored=outcome.committed, new_generation=outcome.new_generation
     )

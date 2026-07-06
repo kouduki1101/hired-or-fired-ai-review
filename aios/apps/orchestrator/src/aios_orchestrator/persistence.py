@@ -53,7 +53,11 @@ def _config_from_json(d: dict) -> ModelConfig:
 
 
 async def save_cohort(
-    session: AsyncSession, cohort: CohortRuntime, *, tenant_id: str = "default"
+    session: AsyncSession,
+    cohort: CohortRuntime,
+    *,
+    tenant_id: str = "default",
+    display_name: str | None = None,
 ) -> None:
     """冪等な保存。イベントはチェーンの続きだけを追記する。"""
     now = datetime.now(UTC)
@@ -75,7 +79,7 @@ async def save_cohort(
         row = CohortRow(
             cohort_id=cohort.cohort_id,
             tenant_id=tenant_id,
-            name=cohort.cohort_id,
+            name=display_name or cohort.cohort_id,
             phase=str(cohort.phase),
             slot_count=len(cohort.slots),
             tv_dimension=int(cohort.teacher_vector.shape[0]),
@@ -88,6 +92,8 @@ async def save_cohort(
         row.phase = str(cohort.phase)
         row.tv_dimension = int(cohort.teacher_vector.shape[0])
         row.config = runtime_state
+        if display_name is not None:
+            row.name = display_name
 
     # 教師ベクトル(第1の指標)の最新値を追記(履歴は追記のみ、docs/04 不変条件6)
     session.add(

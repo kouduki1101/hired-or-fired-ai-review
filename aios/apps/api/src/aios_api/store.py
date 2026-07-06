@@ -9,23 +9,86 @@ from __future__ import annotations
 
 import numpy as np
 from aios_adapters.fake import FakeAgentAdapter
+from aios_adapters.spi import ModelConfig
 from aios_core.types import HealthThresholds
 from aios_orchestrator.cycle import CycleResult
+from aios_orchestrator.persistence import load_cohort, save_cohort
 from aios_orchestrator.runtime import CohortRuntime, hatch_cohort
 from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from aios_api.notify import Notifier
 
 DEMO_DIM = 16
 DEMO_THRESHOLDS = HealthThresholds(lower=0.05, upper=1.2, hysteresis_cycles=2)
 
 
+def _restore_fake_adapter(index: int, config: ModelConfig) -> FakeAgentAdapter:
+    """rehydrate: スナップショットのcontext_vector(挙動)からFakeAdapterを再構成。"""
+    assert config.context_vector is not None
+    return FakeAgentAdapter(behavior=np.asarray(config.context_vector), seed=index)
+
+
 class DemoStore:
     def __init__(self) -> None:
         self._cohorts: dict[str, CohortRuntime] = {}
+        self._names: dict[str, str] = {}  # cohort_id -> 表示名
         self._task_counts: dict[str, dict[str, int]] = {}  # cohort_id -> slot_id -> count
         self._last_cycle: dict[str, CycleResult] = {}
         self._task_records: dict[str, dict] = {}  # task_id -> リネージ記録(FR-GV-01)
         self._loop_states: dict[str, str] = {}  # cohort_id -> RUNNING/PAUSED/DRY_RUN
         self._cycle_history: dict[str, list[dict]] = {}  # cohort_id -> サイクル時系列
+        self.notifier = Notifier()  # Webhook配送(FR-EX-01)
+        self._sessionmaker: async_sessionmaker | None = None  # DB配線(任意)
+
+    # --- 永続化配線(AIOS_DATABASE_URL設定時のみ有効) ---
+    def attach_db(self, sessionmaker: async_sessionmaker) -> None:
+        self._sessionmaker = sessionmaker
+
+    def clear_memory(self) -> None:
+        """テスト・再起動シミュレーション用: インメモリ状態のみ破棄(DBは保持)。"""
+        self._cohorts.clear()
+        self._names.clear()
+        self._task_counts.clear()
+        self._last_cycle.clear()
+        self._task_records.clear()
+        self._loop_states.clear()
+        self._cycle_history.clear()
+
+    async def persist(self, cohort_id: str) -> None:
+        """コホート状態をDBへ保存(未配線時はno-op)。"""
+        if self._sessionmaker is None:
+            return
+        cohort = self.get_cohort(cohort_id)
+        async with self._sessionmaker() as session, session.begin():
+            await save_cohort(session, cohort, display_name=self._names.get(cohort_id))
+
+    async def rehydrate_all(self) -> int:
+        """DBに保存済みの全コホートを復元する(起動時)。"""
+        if self._sessionmaker is None:
+            return 0
+        from aios_storage.models import CohortRow
+
+        restored = 0
+        async with self._sessionmaker() as session:
+            rows = (await session.scalars(select(CohortRow))).all()
+            for row in rows:
+                if row.cohort_id in self._cohorts:
+                    continue
+                cohort = await load_cohort(session, row.cohort_id, _restore_fake_adapter)
+                self._cohorts[cohort.cohort_id] = cohort
+                self._names[cohort.cohort_id] = row.name
+                self._task_counts[cohort.cohort_id] = {s.slot_id: 0 for s in cohort.slots}
+                restored += 1
+        return restored
+
+    # --- 表示名 ---
+    def set_name(self, cohort_id: str, name: str) -> None:
+        self._names[cohort_id] = name
+
+    def name(self, cohort_id: str) -> str:
+        return self._names.get(cohort_id, "")
 
     def create_cohort(self, *, name: str, slot_count: int, ema_alpha: float) -> CohortRuntime:
         rng = np.random.default_rng(abs(hash(name)) % (2**32))

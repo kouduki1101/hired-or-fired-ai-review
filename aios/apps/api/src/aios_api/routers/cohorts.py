@@ -42,13 +42,10 @@ class CohortResponse(BaseModel):
     slots: list[SlotSummary]
 
 
-_NAMES: dict[str, str] = {}  # cohort_id -> name(表示用)
-
-
 def _to_response(cohort: CohortRuntime) -> CohortResponse:
     return CohortResponse(
         cohort_id=cohort.cohort_id,
-        name=_NAMES.get(cohort.cohort_id, ""),
+        name=STORE.name(cohort.cohort_id),
         phase=cohort.phase,
         slot_count=len(cohort.slots),
         slots=[
@@ -72,7 +69,8 @@ async def create_cohort(req: CreateCohortRequest) -> CohortResponse:
     cohort = STORE.create_cohort(
         name=req.name, slot_count=req.slot_count, ema_alpha=req.ema_alpha
     )
-    _NAMES[cohort.cohort_id] = req.name
+    STORE.set_name(cohort.cohort_id, req.name)
+    await STORE.persist(cohort.cohort_id)
     return _to_response(cohort)
 
 
