@@ -24,6 +24,9 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "aiosqlite>=0.20",
+    # PostgreSQL結合テスト(AIOS_PG_TEST_URL設定時のみ実走)の同期マイグレーション用
+    "psycopg[binary]>=3.2",
+    "pgvector>=0.3",
     "aios-core",
     "aios-common",
     "aios-adapters",
