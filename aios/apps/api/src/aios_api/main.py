@@ -28,6 +28,7 @@ from aios_api.routers import (
     scaling,
     tasks,
 )
+from aios_api.security import SecurityHeadersMiddleware
 
 
 def create_app(
@@ -79,6 +80,8 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # 最外層: 全レスポンス(エラー含む)にセキュリティヘッダを付与(多層防御)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.include_router(health.router)
     app.include_router(cohorts.router, prefix="/v1")
     app.include_router(tasks.router, prefix="/v1")
