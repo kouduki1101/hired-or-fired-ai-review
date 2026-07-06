@@ -1,0 +1,49 @@
+name: sdk-publish
+
+# aios-sdk を PyPI に公開する。タグ `sdk-v*`(例: sdk-v0.1.0)push または手動実行で起動。
+# PyPI Trusted Publishing(OIDC)を使うため API トークンは不要。事前準備:
+#   1. PyPI 側で aios-sdk の Trusted Publisher を登録
+#      (owner=kouduki1101, repo=hired-or-fired-ai-review, workflow=sdk-publish.yml,
+#       environment=pypi)
+#   2. リポジトリに `pypi` Environment を作成(必要なら承認者を設定)
+# TestPyPI で先に検証する場合は publish ステップの repository-url を差し替える。
+
+on:
+  push:
+    tags: ["sdk-v*"]
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: aios
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Build sdist + wheel
+        run: uv build --package aios-sdk --out-dir dist
+      - name: Check metadata
+        run: uvx twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-dist
+          path: aios/dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # OIDC Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

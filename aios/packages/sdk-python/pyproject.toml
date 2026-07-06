@@ -1,9 +1,31 @@
 [project]
 name = "aios-sdk"
 version = "0.1.0"
-description = "AIOS Python SDK - multi-agent population operations platform client"
+description = "Python client SDK for the AIOS multi-agent population operations platform"
+readme = "README.md"
 requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "AIOS Team" }]
+keywords = ["aios", "multi-agent", "llm-ops", "agent-operations", "sdk"]
 dependencies = ["httpx>=0.27"]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/kouduki1101/hired-or-fired-ai-review"
+Repository = "https://github.com/kouduki1101/hired-or-fired-ai-review"
+Documentation = "https://github.com/kouduki1101/hired-or-fired-ai-review/tree/main/aios/docs"
+Changelog = "https://github.com/kouduki1101/hired-or-fired-ai-review/blob/main/aios/packages/sdk-python/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]
@@ -11,3 +33,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aios_sdk"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/aios_sdk", "README.md", "CHANGELOG.md"]
