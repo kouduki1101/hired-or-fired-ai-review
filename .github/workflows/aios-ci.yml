@@ -13,6 +13,25 @@ defaults:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # pgvector入りPostgreSQLを起動し、Alembicマイグレーションの結合テスト
+    # (packages/storage/tests/test_migrations.py::TestPostgresMigration)を実走させる。
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: aios
+          POSTGRES_PASSWORD: aios
+          POSTGRES_DB: aios_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aios"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # 同期ドライバ(psycopg)URL。test_migrations が create_engine で直接使う。
+      AIOS_PG_TEST_URL: postgresql+psycopg://aios:aios@localhost:5432/aios_test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -20,5 +39,17 @@ jobs:
         run: uv sync
       - name: Lint (ruff)
         run: uv run ruff check .
-      - name: Unit & contract tests
+      - name: Unit, contract & migration tests
         run: uv run pytest -q
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+      - name: Helm lint
+        run: helm lint infra/helm/aios
+      - name: Helm template (smoke render)
+        run: helm template aios infra/helm/aios > /dev/null
