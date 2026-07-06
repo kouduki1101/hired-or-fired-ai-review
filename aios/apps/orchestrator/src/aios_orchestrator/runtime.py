@@ -78,6 +78,8 @@ class CohortRuntime:
     tv_history: list[Vector] = field(default_factory=list)
     # 安全境界(FR-SF): 禁止ベクトルのレジストリ
     negative_centroids: list[NegativeCentroid] = field(default_factory=list)
+    # 次元拡張(FR-SC): 拡張次元の価値軸レジストリ(dim_index -> label)
+    value_axes: dict[int, str] = field(default_factory=dict)
     # 成熟点検出(FR-LC-04)用の時系列
     drift_history: list[float] = field(default_factory=list)
     health_history: list[HealthStatus] = field(default_factory=list)

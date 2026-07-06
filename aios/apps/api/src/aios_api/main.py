@@ -15,7 +15,17 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from aios_api.routers import admin, cohorts, health, lineage, metrics, proposals, safety, tasks
+from aios_api.routers import (
+    admin,
+    cohorts,
+    health,
+    lineage,
+    metrics,
+    proposals,
+    safety,
+    scaling,
+    tasks,
+)
 
 
 def create_app(database_url: str | None = None) -> FastAPI:
@@ -60,6 +70,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.include_router(lineage.router, prefix="/v1")
     app.include_router(proposals.router, prefix="/v1")
     app.include_router(safety.router, prefix="/v1")
+    app.include_router(scaling.router, prefix="/v1")
 
     @app.exception_handler(AiosError)
     async def aios_error_handler(_: Request, exc: AiosError) -> JSONResponse:

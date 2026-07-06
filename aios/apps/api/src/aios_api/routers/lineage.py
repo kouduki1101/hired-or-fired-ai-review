@@ -12,7 +12,7 @@ from typing import Any
 
 from aios_core.lineage.events import SlotEventType
 from aios_core.lineage.replay import verify_chain
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 from pydantic import BaseModel
 
 from aios_api.store import STORE
@@ -84,6 +84,81 @@ async def task_lineage(task_id: str) -> TaskLineageResponse:
         dynamics_at_time=record["dynamics"],
         routing={"cluster": record["cluster"], "reason": record["routing_reason"]},
         explanation=explanation,
+    )
+
+
+@router.get("/lineage/export/{cohort_id}/manifest")
+async def export_manifest(cohort_id: str) -> dict[str, Any]:
+    """監査エクスポートの完全性マニフェスト(FR-GV-03)。
+
+    スロットごとのイベント数・チェーン末尾ハッシュ・検証結果を返す。
+    エクスポート本文(NDJSON)と突き合わせて改竄・欠落を検出できる。
+    """
+    from datetime import UTC, datetime
+
+    cohort = STORE.get_cohort(cohort_id)
+    slots = []
+    for slot in cohort.slots:
+        verified = True
+        try:
+            verify_chain(slot.events)
+        except Exception:
+            verified = False
+        slots.append(
+            {
+                "slot_id": slot.slot_id,
+                "display_id": slot.display_id,
+                "event_count": len(slot.events),
+                "last_hash": slot.events[-1].hash.hex() if slot.events else None,
+                "chain_verified": verified,
+            }
+        )
+    return {
+        "cohort_id": cohort_id,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "total_events": sum(s["event_count"] for s in slots),
+        "slots": slots,
+    }
+
+
+@router.get("/lineage/export/{cohort_id}")
+async def export_events(cohort_id: str) -> Response:
+    """監査エクスポート本文: 全スロットの運用履歴をNDJSONで返す(FR-GV-03)。
+
+    レスポンスヘッダ X-AIOS-Export-SHA256 で本文全体のハッシュを提示する。
+    各行に prev_hash/hash を含むため、受領側で単独でチェーン再検証が可能。
+    """
+    import hashlib
+    import json
+
+    cohort = STORE.get_cohort(cohort_id)
+    lines: list[str] = []
+    for slot in cohort.slots:
+        for ev in slot.events:
+            lines.append(
+                json.dumps(
+                    {
+                        "slot_id": ev.slot_id,
+                        "display_id": slot.display_id,
+                        "event_type": str(ev.event_type),
+                        "generation": ev.generation,
+                        "payload": ev.payload,
+                        "occurred_at": ev.occurred_at.isoformat(),
+                        "prev_hash": ev.prev_hash.hex(),
+                        "hash": ev.hash.hex(),
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+    body = ("\n".join(lines) + "\n").encode() if lines else b""
+    return Response(
+        content=body,
+        media_type="application/x-ndjson",
+        headers={
+            "X-AIOS-Export-SHA256": hashlib.sha256(body).hexdigest(),
+            "Content-Disposition": f'attachment; filename="aios-audit-{cohort_id}.jsonl"',
+        },
     )
 
 

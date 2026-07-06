@@ -74,6 +74,7 @@ async def save_cohort(
             "upper": cohort.thresholds.upper,
             "hysteresis_cycles": cohort.thresholds.hysteresis_cycles,
         },
+        "value_axes": {str(k): v for k, v in cohort.value_axes.items()},
     }
     if row is None:
         row = CohortRow(
@@ -247,5 +248,6 @@ async def load_cohort(
         ema_alpha=row.ema_alpha,
         dynamics=DynamicsSignal(**state.get("dynamics", {})),
         step_no=int(state.get("step_no", 0)),
+        value_axes={int(k): v for k, v in state.get("value_axes", {}).items()},
     )
     return cohort
