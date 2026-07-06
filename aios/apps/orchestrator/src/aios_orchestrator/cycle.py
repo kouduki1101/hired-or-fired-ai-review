@@ -46,6 +46,7 @@ class CycleConfig:
     smoke_floor: float = 0.5  # Rehatch検証の合格下限
     rehatch_noise: float = 0.05  # TV-Init時のノイズ幅σ
     dry_run: bool = False  # 判断のみ記録し作用しない
+    defer_rehatch: bool = False  # Rehatchを実行せず選定結果のみ返す(承認モード、FR-GV-05)
     rng_seed: int = 0  # 監査リプレイ用(サイクル毎にstep_noと合成)
 
 
@@ -65,6 +66,14 @@ class QuarantineOutcome:
 
 
 @dataclass(frozen=True)
+class PendingRehatch:
+    """承認待ちのRehatch選定(defer_rehatch時、FR-GV-05)。"""
+
+    slot_id: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class CycleResult:
     step_no: int
     health: HealthStatus
@@ -78,6 +87,7 @@ class CycleResult:
     stabilization_point: bool
     probe_missing: int
     dry_run: bool
+    pending_rehatch: list[PendingRehatch] = field(default_factory=list)
 
 
 async def _observe(slot: SlotRuntime) -> Vector | None:
@@ -235,7 +245,18 @@ async def run_cycle(
         [s.view() for s in cohort.slots], now, cfg.rehatch, slot_states=states
     )
     outcomes: list[RehatchOutcome] = []
-    if not cfg.dry_run:
+    pending: list[PendingRehatch] = []
+    if cfg.defer_rehatch and not cfg.dry_run:
+        # 承認モード: 選定を記録し実行は承認後(FR-GV-05)。選定イベントは残す
+        by_id = {s.slot_id: s for s in cohort.slots}
+        for sel in selections:
+            by_id[sel.slot_id].record(
+                SlotEventType.REHATCH_SELECTED,
+                {"reason": str(sel.reason), "deferred": True},
+                now,
+            )
+            pending.append(PendingRehatch(sel.slot_id, str(sel.reason)))
+    elif not cfg.dry_run:
         by_id = {s.slot_id: s for s in cohort.slots}
         for sel in selections:
             outcomes.append(
@@ -270,7 +291,29 @@ async def run_cycle(
         stabilization_point=stabilization,
         probe_missing=missing,
         dry_run=cfg.dry_run,
+        pending_rehatch=pending,
     )
+
+
+async def rehatch_slot(
+    cohort: CohortRuntime,
+    slot_id: str,
+    reason: str,
+    cfg: CycleConfig | None = None,
+    now: datetime | None = None,
+) -> RehatchOutcome:
+    """単一スロットへのRehatch実行(承認後の実行・手動指示用、FR-GV-05)。"""
+    from aios_core.policy.rehatch_select import RehatchSelection
+    from aios_core.types import RehatchReason
+
+    cfg = cfg or CycleConfig()
+    now = now or datetime.now(UTC)
+    slot = next(s for s in cohort.slots if s.slot_id == slot_id)
+    if slot.status != SlotStatus.ACTIVE:
+        raise ValueError(f"slot {slot_id} is not ACTIVE (status={slot.status})")
+    rng = np.random.default_rng(cfg.rng_seed + cohort.step_no)
+    sel = RehatchSelection(slot_id=slot_id, reason=RehatchReason(reason))
+    return await _execute_rehatch(slot, sel, cohort.teacher_vector, cfg, rng, now)
 
 
 async def restore_quarantined_slot(

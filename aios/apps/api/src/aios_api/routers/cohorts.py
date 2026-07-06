@@ -22,6 +22,7 @@ class CreateCohortRequest(BaseModel):
     slot_count: int = Field(ge=2, le=1000)
     adapter_kind: str = "fake_agent"  # P1デモはfake固定。P2でanthropic_agent等を解放
     ema_alpha: float = Field(default=0.1, gt=0.0, le=1.0)
+    approval_mode: str = Field(default="auto", pattern="^(auto|manual)$")  # FR-GV-05
 
 
 class SlotSummary(BaseModel):
@@ -69,6 +70,7 @@ async def create_cohort(req: CreateCohortRequest) -> CohortResponse:
     cohort = STORE.create_cohort(
         name=req.name, slot_count=req.slot_count, ema_alpha=req.ema_alpha
     )
+    cohort.approval_mode = req.approval_mode
     STORE.set_name(cohort.cohort_id, req.name)
     await STORE.persist(cohort.cohort_id)
     return _to_response(cohort)

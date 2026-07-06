@@ -53,3 +53,19 @@ async def list_deliveries(limit: int = 20) -> list[dict[str, Any]]:
          "delivered_at": d.delivered_at}
         for d in STORE.notifier.deliveries[-max(1, min(limit, 100)):]
     ]
+
+
+@router.get("/admin/usage")
+async def usage_report() -> dict[str, Any]:
+    """使用量メータリング(FR-TN-03): 課金基盤へのエクスポート元データ。"""
+    items = STORE.usage()
+    return {
+        "cohorts": items,
+        "totals": {
+            key: sum(i[key] for i in items)
+            for key in (
+                "slot_count", "cycles_run", "tasks_processed",
+                "probes_executed", "rehatches_committed",
+            )
+        },
+    }

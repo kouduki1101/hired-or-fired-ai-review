@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 
 from aios_api.routers import (
     admin,
+    approvals,
     cohorts,
     health,
     lineage,
@@ -71,6 +72,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     app.include_router(proposals.router, prefix="/v1")
     app.include_router(safety.router, prefix="/v1")
     app.include_router(scaling.router, prefix="/v1")
+    app.include_router(approvals.router, prefix="/v1")
 
     @app.exception_handler(AiosError)
     async def aios_error_handler(_: Request, exc: AiosError) -> JSONResponse:

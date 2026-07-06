@@ -41,6 +41,7 @@ class CycleSummary(BaseModel):
     noise_amount: float
     rehatched: list[RehatchedSlot]
     quarantined: list[QuarantinedSlot]
+    pending_rehatch: list[dict]
     stabilization_point: bool
     probe_missing: int
     dry_run: bool
@@ -82,6 +83,9 @@ def _summary(result) -> CycleSummary:
         quarantined=[
             QuarantinedSlot(slot_id=q.slot_id, label=q.label, similarity=q.similarity)
             for q in result.quarantined
+        ],
+        pending_rehatch=[
+            {"slot_id": p.slot_id, "reason": p.reason} for p in result.pending_rehatch
         ],
         stabilization_point=result.stabilization_point,
         probe_missing=result.probe_missing,
@@ -127,8 +131,26 @@ async def run_control_cycle(cohort_id: str, dry_run: bool = False) -> CycleSumma
         raise HTTPException(status_code=409, detail="control loop is paused")
     effective_dry_run = dry_run or loop_state == "DRY_RUN"
     previous = STORE.last_cycle(cohort_id)
-    result = await run_cycle(cohort, CycleConfig(dry_run=effective_dry_run))
+    defer = cohort.approval_mode == "manual"  # 承認モード(FR-GV-05)
+    result = await run_cycle(
+        cohort, CycleConfig(dry_run=effective_dry_run, defer_rehatch=defer)
+    )
     STORE.set_last_cycle(cohort_id, result)
+    for p_r in result.pending_rehatch:
+        STORE.add_approval(
+            cohort_id=cohort_id,
+            action_type="rehatch",
+            payload={"slot_id": p_r.slot_id, "reason": p_r.reason},
+        )
+    if not result.dry_run:
+        STORE.bump_usage(cohort_id, "cycles_run")
+        STORE.bump_usage(
+            cohort_id, "probes_executed", len(cohort.slots) - result.probe_missing
+        )
+        STORE.bump_usage(
+            cohort_id, "rehatches_committed",
+            sum(1 for o in result.rehatched if o.committed),
+        )
     # Webhook通知(FR-EX-01)と永続化
     await STORE.notifier.emit_from_cycle(
         cohort_id, str(previous.health) if previous else None, result

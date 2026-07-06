@@ -41,6 +41,8 @@ class DemoStore:
         self._cycle_history: dict[str, list[dict]] = {}  # cohort_id -> サイクル時系列
         self.notifier = Notifier()  # Webhook配送(FR-EX-01)
         self._sessionmaker: async_sessionmaker | None = None  # DB配線(任意)
+        self._approvals: dict[str, dict] = {}  # 承認キュー(FR-GV-05)
+        self._usage: dict[str, dict[str, int]] = {}  # 使用量カウンタ(FR-TN-03)
 
     # --- 永続化配線(AIOS_DATABASE_URL設定時のみ有効) ---
     def attach_db(self, sessionmaker: async_sessionmaker) -> None:
@@ -89,6 +91,65 @@ class DemoStore:
 
     def name(self, cohort_id: str) -> str:
         return self._names.get(cohort_id, "")
+
+    # --- 承認キュー(FR-GV-05) ---
+    def add_approval(self, *, cohort_id: str, action_type: str, payload: dict) -> str:
+        import uuid
+        from datetime import UTC, datetime
+
+        # 同一アクションの保留が既にあれば重複登録しない(サイクル毎の再選定対策)
+        for existing in self._approvals.values():
+            if (
+                existing["status"] == "pending"
+                and existing["cohort_id"] == cohort_id
+                and existing["action_type"] == action_type
+                and existing["payload"] == payload
+            ):
+                return existing["approval_id"]
+
+        approval_id = str(uuid.uuid4())
+        self._approvals[approval_id] = {
+            "approval_id": approval_id,
+            "cohort_id": cohort_id,
+            "action_type": action_type,  # 'rehatch' | 'dimension_expansion'
+            "payload": payload,
+            "status": "pending",
+            "requested_at": datetime.now(UTC).isoformat(),
+            "decided_at": None,
+        }
+        return approval_id
+
+    def get_approval(self, approval_id: str) -> dict:
+        approval = self._approvals.get(approval_id)
+        if approval is None:
+            raise HTTPException(status_code=404, detail="approval not found")
+        return approval
+
+    def list_approvals(self, status: str | None = None) -> list[dict]:
+        items = list(self._approvals.values())
+        return [a for a in items if status is None or a["status"] == status]
+
+    # --- 使用量メータリング(FR-TN-03) ---
+    def bump_usage(self, cohort_id: str, key: str, amount: int = 1) -> None:
+        counters = self._usage.setdefault(cohort_id, {})
+        counters[key] = counters.get(key, 0) + amount
+
+    def usage(self) -> list[dict]:
+        out = []
+        for cohort_id, cohort in self._cohorts.items():
+            counters = self._usage.get(cohort_id, {})
+            out.append(
+                {
+                    "cohort_id": cohort_id,
+                    "name": self.name(cohort_id),
+                    "slot_count": len(cohort.slots),
+                    "cycles_run": counters.get("cycles_run", 0),
+                    "tasks_processed": counters.get("tasks_processed", 0),
+                    "probes_executed": counters.get("probes_executed", 0),
+                    "rehatches_committed": counters.get("rehatches_committed", 0),
+                }
+            )
+        return out
 
     def create_cohort(self, *, name: str, slot_count: int, ema_alpha: float) -> CohortRuntime:
         rng = np.random.default_rng(abs(hash(name)) % (2**32))

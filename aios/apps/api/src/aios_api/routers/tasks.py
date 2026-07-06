@@ -87,6 +87,7 @@ async def submit_task(cohort_id: str, req: SubmitTaskRequest) -> TaskResponse:
             "requested_at": now.isoformat(),
         },
     )
+    STORE.bump_usage(cohort_id, "tasks_processed")
     await STORE.persist(cohort_id)
 
     return TaskResponse(

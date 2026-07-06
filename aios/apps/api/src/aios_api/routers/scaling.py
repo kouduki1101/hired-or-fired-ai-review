@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from aios_orchestrator.scaling import expand_cohort_dimension
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from aios_api.store import STORE
@@ -30,6 +31,17 @@ class ExpandResponse(BaseModel):
 @router.post("/cohorts/{cohort_id}/scaling/expand", response_model=ExpandResponse)
 async def expand_dimension(cohort_id: str, req: ExpandRequest) -> ExpandResponse:
     cohort = STORE.get_cohort(cohort_id)
+    if cohort.approval_mode == "manual":
+        # 承認ゲート(FR-GV-05): 実行せず承認キューへ
+        approval_id = STORE.add_approval(
+            cohort_id=cohort_id,
+            action_type="dimension_expansion",
+            payload={"added_dims": req.added_dims, "axis_labels": req.axis_labels},
+        )
+        return JSONResponse(
+            status_code=202,
+            content={"approval_id": approval_id, "status": "pending"},
+        )
     previous = int(cohort.teacher_vector.shape[0])
     try:
         new_dim = await expand_cohort_dimension(cohort, req.added_dims, req.axis_labels)
