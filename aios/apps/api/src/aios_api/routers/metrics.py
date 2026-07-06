@@ -10,7 +10,7 @@ import math
 
 from aios_core.types import HealthStatus
 from aios_orchestrator.cycle import CycleConfig, run_cycle
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from aios_api.store import STORE
@@ -75,11 +75,44 @@ def _summary(result) -> CycleSummary:
     )
 
 
+class LoopControlRequest(BaseModel):
+    action: str  # pause / resume / dry_run_on / dry_run_off
+
+
+class LoopStateResponse(BaseModel):
+    cohort_id: str
+    loop_state: str
+
+
+@router.post("/cohorts/{cohort_id}/loop", response_model=LoopStateResponse)
+async def control_loop(cohort_id: str, req: LoopControlRequest) -> LoopStateResponse:
+    """ループ制御(FR-LC-03 / FR-UI-07)。操作は監査対象。"""
+    STORE.get_cohort(cohort_id)  # 404チェック
+    transitions = {
+        "pause": "PAUSED",
+        "resume": "RUNNING",
+        "dry_run_on": "DRY_RUN",
+        "dry_run_off": "RUNNING",
+    }
+    if req.action not in transitions:
+        raise HTTPException(status_code=422, detail=f"unknown action: {req.action}")
+    STORE.set_loop_state(cohort_id, transitions[req.action])
+    return LoopStateResponse(cohort_id=cohort_id, loop_state=STORE.loop_state(cohort_id))
+
+
 @router.post("/cohorts/{cohort_id}/cycles/run", response_model=CycleSummary)
 async def run_control_cycle(cohort_id: str, dry_run: bool = False) -> CycleSummary:
-    """制御サイクルを1回実行する(明細書 図10のメインループ1周)。"""
+    """制御サイクルを1回実行する(明細書 図10のメインループ1周)。
+
+    ループ状態を尊重する: PAUSED中は409、DRY_RUN中は強制的に判断のみ。
+    (常駐駆動は aios_orchestrator.scheduler.CycleScheduler が同じ規則で行う)
+    """
     cohort = STORE.get_cohort(cohort_id)
-    result = await run_cycle(cohort, CycleConfig(dry_run=dry_run))
+    loop_state = STORE.loop_state(cohort_id)
+    if loop_state == "PAUSED":
+        raise HTTPException(status_code=409, detail="control loop is paused")
+    effective_dry_run = dry_run or loop_state == "DRY_RUN"
+    result = await run_cycle(cohort, CycleConfig(dry_run=effective_dry_run))
     STORE.set_last_cycle(cohort_id, result)
     return _summary(result)
 

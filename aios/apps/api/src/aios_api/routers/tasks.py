@@ -68,6 +68,26 @@ async def submit_task(cohort_id: str, req: SubmitTaskRequest) -> TaskResponse:
     slot.maturity += 1
     STORE.record_assignment(cohort_id, slot.slot_id)
 
+    # リネージ: 担当時点の世代・ステップ・制御値を固定記録(FR-GV-01)
+    STORE.record_task(
+        task_id,
+        {
+            "task_id": task_id,
+            "cohort_id": cohort_id,
+            "slot_id": slot.slot_id,
+            "display_id": slot.display_id,
+            "generation": slot.generation,
+            "step_no": cohort.step_no,
+            "cluster": str(decision.cluster),
+            "routing_reason": decision.reason,
+            "dynamics": {
+                "lr_correction": cohort.dynamics.lr_correction,
+                "noise_amount": cohort.dynamics.noise_amount,
+            },
+            "requested_at": now.isoformat(),
+        },
+    )
+
     return TaskResponse(
         task_id=task_id,
         output=out.payload,

@@ -23,6 +23,8 @@ class DemoStore:
         self._cohorts: dict[str, CohortRuntime] = {}
         self._task_counts: dict[str, dict[str, int]] = {}  # cohort_id -> slot_id -> count
         self._last_cycle: dict[str, CycleResult] = {}
+        self._task_records: dict[str, dict] = {}  # task_id -> リネージ記録(FR-GV-01)
+        self._loop_states: dict[str, str] = {}  # cohort_id -> RUNNING/PAUSED/DRY_RUN
 
     def create_cohort(self, *, name: str, slot_count: int, ema_alpha: float) -> CohortRuntime:
         rng = np.random.default_rng(abs(hash(name)) % (2**32))
@@ -63,6 +65,29 @@ class DemoStore:
 
     def last_cycle(self, cohort_id: str) -> CycleResult | None:
         return self._last_cycle.get(cohort_id)
+
+    # --- タスクリネージ記録(FR-GV-01: 担当時点の世代・判断・制御値を固定) ---
+    def record_task(self, task_id: str, record: dict) -> None:
+        self._task_records[task_id] = record
+
+    def get_task(self, task_id: str) -> dict:
+        record = self._task_records.get(task_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="task not found")
+        return record
+
+    # --- ループ制御(FR-LC-03) ---
+    def loop_state(self, cohort_id: str) -> str:
+        return self._loop_states.get(cohort_id, "RUNNING")
+
+    def set_loop_state(self, cohort_id: str, state: str) -> None:
+        self._loop_states[cohort_id] = state
+
+    def find_cohort_by_slot(self, slot_id: str) -> CohortRuntime:
+        for cohort in self._cohorts.values():
+            if any(s.slot_id == slot_id for s in cohort.slots):
+                return cohort
+        raise HTTPException(status_code=404, detail="slot not found")
 
 
 STORE = DemoStore()

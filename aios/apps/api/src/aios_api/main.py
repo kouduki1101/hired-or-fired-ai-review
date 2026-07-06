@@ -11,7 +11,7 @@ from aios_common.errors import AiosError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from aios_api.routers import cohorts, health, metrics, tasks
+from aios_api.routers import cohorts, health, lineage, metrics, proposals, tasks
 
 
 def create_app() -> FastAPI:
@@ -24,6 +24,8 @@ def create_app() -> FastAPI:
     app.include_router(cohorts.router, prefix="/v1")
     app.include_router(tasks.router, prefix="/v1")
     app.include_router(metrics.router, prefix="/v1")
+    app.include_router(lineage.router, prefix="/v1")
+    app.include_router(proposals.router, prefix="/v1")
 
     @app.exception_handler(AiosError)
     async def aios_error_handler(_: Request, exc: AiosError) -> JSONResponse:
