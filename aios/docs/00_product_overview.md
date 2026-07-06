@@ -1,0 +1,153 @@
+# 00. 製品概要 — AIOS (Agent-population Intelligence Operating System)
+
+- 版数: 1.0 (Draft for Review)
+- 根拠資料: 特願2026-000860 明細書・特許請求の範囲(特許査定 令和8年4月)、AIOS構想書(2026-01-05)
+
+---
+
+## 1. 製品ビジョン
+
+**「AIエージェントを使い捨てない」ための運用OS。**
+
+企業がLLMエージェントやMLモデルを複数体運用する時代において、従来手法(性能が落ちたモデルの削除・再生成)は
+運用履歴・役割・文脈の断絶(Amnesia)を招き、次の問題を引き起こす。
+
+1. **固着**: 群全体が特定の挙動に過剰適応し、多様性を喪失する
+2. **発散(カオス)**: 群の挙動が不安定になり制御不能になる
+3. **説明不能**: 「なぜAIがその回答をしたのか」を過去に遡って説明できない(監査不能)
+
+AIOSは、各エージェントを**削除禁止のスロット**に固定し、**ID と運用履歴を永続維持したまま**内部パラメータのみを
+群の長期方向性(教師ベクトル)に基づいて更新(**Rehatch-in-Place**)することで、
+「多様性 × 安定性 × 監査追跡性」を同時に満たすマルチエージェント長期運用基盤を提供する。
+
+## 2. ターゲット顧客とユースケース
+
+| セグメント | 具体像 | 解決する課題 |
+|---|---|---|
+| U1. エンタープライズAI運用部門 | 社内に業務支援AIエージェントを10〜数百体運用する企業 | エージェントの品質ドリフト検知、劣化時の安全な再教育、AI監査対応(EU AI Act / 社内AIガバナンス) |
+| U2. AI SaaS事業者 | カスタマーサポート・営業支援等でLLMエージェント群を顧客提供する事業者 | テナント毎のエージェント群の健全性監視、プロンプトインジェクション汚染からの自動復旧 |
+| U3. MLプラットフォームチーム | 推薦・与信・異常検知等でモデルアンサンブルを継続学習運用するチーム | コンセプトドリフト下での群の安定制御、モデルリネージ管理 |
+| U4. (拡張)組織マネジメント | ERP/HCM連携による人的リソース配分最適化(明細書 変形例(3)) | タスクの自動ルーティング、育成と品質のトレードオフ解消 |
+
+**初期リリース(GA)は U1/U2 の「LLMエージェント群の長期運用」に絞る。**
+U3(重みレベルの学習制御)はアダプタプラグインとして段階提供、U4はGA後のアドオン。
+
+## 3. 提供形態・価格モデル(前提)
+
+| 形態 | 内容 | 想定価格帯 |
+|---|---|---|
+| SaaS (Cloud) | マルチテナント型。エージェント実体は顧客側 or AIOSマネージド | スロット数 × 月額 + 従量(評価実行数) |
+| Self-Hosted (Enterprise) | Docker Compose / Kubernetes(Helm)で顧客環境に導入 | 年間ライセンス + サポート |
+| SDK / API | Python・TypeScript SDK。既存エージェント基盤(LangGraph, CrewAI等)への組込み | SaaS/Enterpriseに同梱 |
+
+ライセンス方針: コアは商用ライセンス(特許実施品)。SDKインタフェース部のみ寛容ライセンスで公開し導入障壁を下げる。
+
+## 4. 製品を構成する6つの柱
+
+1. **Fixed Cohort(固定母集団管理)** — スロット・ID・運用履歴の永続管理。削除操作をAPIレベルで持たない
+2. **Swarm Metrics(群指標エンジン)** — 教師ベクトル(EMA)、散逸度、適合度、成熟度、拡張指標(興味関数・進化係数等)の算出
+3. **Rehatch Engine(非破壊的再初期化)** — コンテキスト注入 / アダプタ再生成 / 知識蒸留 / プロンプト再構成の4戦略
+4. **Adaptive Router(タスクルーティング)** — タスク難易度×成熟度/適合度による動的割当(新人↔ベテラン)
+5. **Governance & Traceability(統治と追跡)** — 全出力のリネージ記録、開示請求応答、Safety Boundary監視、承認ワークフロー
+6. **Cohort Dashboard(群健全性ダッシュボード)** — 散逸度メーター、トレンド追従グラフ、スロットタイル、イベントログ(明細書 図16)
+
+## 5. 特許請求項トレーサビリティマトリクス
+
+製品機能が請求項を実施していることを開発全期間で保証するためのマトリクス。
+機能要件ID(FR)は `01_functional_requirements.md` を参照。**太字は必須実装(請求項の構成要件)**。
+
+| 請求項 | 構成要件の要旨 | 実装コンポーネント | 対応FR |
+|---|---|---|---|
+| 1 | ①固有ID付与+運用履歴の記憶 ②第1指標(長期方向性)の更新+第2指標(ばらつき)の算出 ③両指標に基づく対象選定と、ID・履歴維持のままの内部パラメータ更新 | Cohort Store / Metrics Engine / Rehatch Engine | **FR-CH-01〜04, FR-MT-01〜03, FR-RH-01〜03** |
+| 2 | 削除が許容されない所定数のスロット | Cohort Store(削除API非提供+削除保護) | **FR-CH-01, FR-CH-05** |
+| 3 | 第1指標のEMA/平滑化更新 | Metrics Engine (Trend Analyzer) | **FR-MT-01** |
+| 4 | 第2指標=出力分散/パラメータ距離平均/エントロピー | Metrics Engine (Dissipation Calculator) | **FR-MT-02** |
+| 5 | 適合度スコア算出+基準未満のモデルを更新対象に選定 | Metrics Engine (Fitness Evaluator) + Rehatch Selector | **FR-MT-03, FR-RH-01** |
+| 6 | Rehatch時: 第1指標に基づく初期値設定 or 知識蒸留 | Rehatch Engine (Strategy: TV-Init / Distillation) | **FR-RH-02, FR-RH-04** |
+| 7 | 第2指標の閾値逸脱時に学習率/ノイズ量を動的変更 | Dynamics Controller | **FR-DY-01, FR-DY-02** |
+| 8 | 成熟度(更新からの経過/適合度ベース)によるタスク割当 | Adaptive Router | **FR-RT-01〜03** |
+| 9 | モデル数維持のまま第1指標の次元数を拡張 | Scaling Controller | **FR-SC-01, FR-SC-02** |
+| 10 | 初期化フェーズのみ生成(卵層)、運用フェーズは非破壊再初期化のみ | Lifecycle Manager (Phase FSM) | **FR-LC-01, FR-LC-02** |
+| 11 | 方法クレーム(上記処理のメソッド実行) | Orchestrator メインループ | FR-LC-03 |
+| 12 | プログラムクレーム | 本製品全体(配布形態) | — |
+
+### 明細書変形例 → 製品機能マップ(差別化機能)
+
+| 変形例 | 製品機能 | 対応FR | 提供時期 |
+|---|---|---|---|
+| (1-1) 自然言語制御指針を第1指標とする | NL Teacher Vector(システムプロンプト/行動規範のEMA的合成) | FR-MT-05 | GA |
+| (1-2) 出力表現間距離による散逸度 | Output-Embedding Dissipation(既定実装) | FR-MT-02 | GA |
+| (2)(3) 組織マネジメント/ERP・HCM連携 | HR Analytics Add-on | FR-EX-02 | GA後 |
+| (4) 開示請求対応 | Lineage Query & Explanation API | FR-GV-01〜03 | GA |
+| (5) モデル側からの自律提案と承認 | Proposal & Arbitration API | FR-GV-04 | GA |
+| (6)(9) 安全・倫理OS / 禁止ベクトル | Safety Boundary Monitor(Negative Centroid) | FR-SF-01〜03 | GA |
+| (8) 興味関数・認知方向・進化係数 | Extended Metrics Pack | FR-MT-04 | GA+1 |
+| (10) 成熟点検出とスナップショット | Stabilization Point Detector | FR-LC-04 | GA |
+| (11) LLM実行場所の選択自由 | Model Adapter抽象(外部API/自前ホスト/エッジ) | FR-AD-01 | GA |
+
+### 実装状況(2026-07-06時点 — 請求項1〜10すべて実装・テスト済み)
+
+| 請求項 | 実装 | 検証テスト |
+|---|---|---|
+| 1 | Rehatch-in-Place(`orchestrator/cycle.py`)+イベントチェーン(`core/lineage`) | `test_lifecycle_e2e.py`(ID・履歴連続)、`test_persistence_e2e.py`(再起動跨ぎ) |
+| 2 | No-Delete by Design(削除API不存在+EventStoreに削除メソッドなし) | `contract/test_claims_contract.py`、`test_event_store.py` |
+| 3 | EMA更新(`core/metrics/teacher.py`) | `test_teacher.py`(明細書式との一致) |
+| 4 | 散逸度5方式(`core/metrics/dissipation.py`) | `test_dissipation_fitness.py`(閉形式=素朴計算の一致) |
+| 5 | 適合度算出+選定(`core/metrics/fitness.py`+`policy/rehatch_select.py`) | `test_policy.py`、`test_lifecycle_e2e.py` |
+| 6 | TV-Init戦略(蒸留はP5) | `test_lifecycle_e2e.py`(TV基づく初期値で再適合) |
+| 7 | ダイナミクス調整(`policy/dynamics.py`+LLM温度写像) | 固着→ノイズ増加→STABLE復帰e2e、`test_anthropic_adapter.py` |
+| 8 | Adaptive Router(`policy/routing.py`) | `test_policy.py`、`test_live_demo_api.py` |
+| 9 | 次元拡張(`orchestrator/scaling.py`+価値軸レジストリ) | `test_scaling.py`(K不変・無停止・新軸分散拡大) |
+| 10 | 卵層非再入(Phase FSM+`PhaseLockedError`) | `test_lifecycle_e2e.py`、契約テスト(スロット追加ルート不存在) |
+| 11/12 | 制御メインループ全体(方法)・本製品(プログラム) | 全テストスイート(172件) |
+
+変形例の実装済み: (1-2)出力埋め込み散逸度 / (4)開示請求API+監査エクスポート /
+(5)自律提案調停 / (6)(9)安全境界(禁止ベクトル→隔離→復旧) / (10)成熟点検出。
+未実装(計画どおり後続): (1-1)NL教師ベクトル(GA)、(8)拡張指標(GA+1)、(2)(3)組織/ERP(GA後)。
+
+## 6. システムコンテキスト(C4 Level 1)
+
+```
+                        ┌──────────────────────────────┐
+   管理者/AI運用者 ──────→│  AIOS Control Plane           │
+   (Dashboard/CLI)       │  ・Cohort Store(スロット管理)   │
+                        │  ・Metrics Engine(指標演算)     │──→ LLM Provider
+   業務システム ──────────→│  ・Rehatch Engine(再初期化)    │    (Anthropic API等 / 自前GPU)
+   (タスク投入 REST/SDK)  │  ・Adaptive Router            │
+                        │  ・Governance/Traceability     │──→ Embedding Provider
+   監査人/顧客 ──────────→│  ・Dashboard/API              │
+   (開示請求)             └──────────────┬───────────────┘
+                                        │ Agent Protocol (Adapter)
+                        ┌───────────────┴───────────────┐
+                        │  Data Plane: エージェント群       │
+                        │  Slot#001..#K (LLM Agent /     │
+                        │  LoRA Model / Classical ML)    │
+                        └────────────────────────────────┘
+```
+
+- **Control Plane(本製品のコア)**: 群の観測・判断・制御。特許の実施主体
+- **Data Plane**: 顧客のエージェント実体。Model Adapter経由で接続(実体を預かるマネージド構成も可)
+
+## 7. 主要な設計原則
+
+1. **No-Delete by Design**: スロット削除のAPI・UI・DB操作を仕様として持たない。休止(dormant)はあっても削除はない
+2. **観測→判断→制御の分離**: Metrics(純関数的演算) / Policy(判断) / Actuator(Rehatch・ルーティング等の作用)を層分離し、判断ロジックを差し替え可能にする
+3. **すべての制御はイベント**: Rehatch・調整・ルーティング判断は追記専用イベントストアに記録され、リネージはイベントの再生で復元できる
+4. **モデル非依存**: 「内部パラメータ」を広義(重み/LoRA/システムプロンプト/温度/知識ベースアクセス条件)に扱うAdapter抽象で、LLM APIエージェントから自前学習モデルまで同一の制御ループに載せる(明細書¶0057準拠)
+5. **人間の承認を挟める**: 全自動制御と、Rehatch等の破壊度が高い操作に承認ゲートを置く運用の両方を選択可能(エンタープライズ要件)
+
+## 8. スコープ外(GA時点)
+
+- エージェント実体の開発フレームワーク機能(LangGraph等の代替はしない。連携する)
+- 基盤モデル自体の事前学習・フルファインチューニング基盤
+- U4(人的組織マネジメント)のGUI — API/データ連携のみ先行
+- オンデバイス(端末内LLM)向け制御 — アーキテクチャ上は許容(明細書¶0242)、GA+2で検討
+
+## 9. 成功指標(製品KPI)
+
+| KPI | 目標 |
+|---|---|
+| 群の固着/カオス検知から自動復旧までの時間 | < 1制御サイクル(既定5分)以内に是正アクション発行 |
+| 開示請求応答(リネージ特定)所要時間 | API 1コールで < 3秒(過去1年分) |
+| 導入所要時間(既存エージェント群のオンボード) | SDK組込みで1エージェントあたり < 30分 |
+| ダッシュボード可観測性 | 散逸度・適合度・成熟度が単一画面で常時把握可能 |

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: aios
+description: >-
+  AIOS - マルチエージェント群 長期運用基盤(特願2026-000860 実施品)。
+  Control Plane API と群健全性ダッシュボードをデプロイする。
+  PostgreSQL / Redis / オブジェクトストレージは外部依存として values で指定する。
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords: [ai, multi-agent, governance]

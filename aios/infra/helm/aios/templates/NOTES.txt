@@ -1,0 +1,18 @@
+AIOS がデプロイされました。
+
+1. API の確認:
+   kubectl port-forward svc/{{ include "aios.fullname" . }}-api 8080:80
+   curl localhost:8080/healthz
+
+2. ダッシュボード:
+{{- if .Values.dashboard.enabled }}
+   kubectl port-forward svc/{{ include "aios.fullname" . }}-dashboard 3000:80
+   open http://localhost:3000
+{{- else }}
+   (dashboard.enabled=false)
+{{- end }}
+
+3. 永続化: {{ if .Values.api.databaseUrl }}有効(AIOS_DATABASE_URL設定済み、起動時にrehydrate){{ else }}無効(インメモリ=評価用。api.databaseUrl を設定してください){{ end }}
+4. 認証: {{ if .Values.api.apiKeys }}APIキー認証有効{{ else }}無効(開発モード。api.apiKeys を設定してください){{ end }}
+
+注意: api.replicas は現行アーキテクチャでは 1 を推奨します(values.yaml のコメント参照)。

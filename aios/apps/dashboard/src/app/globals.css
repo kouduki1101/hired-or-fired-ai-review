@@ -1,0 +1,110 @@
+/* AIOS Cohort Dashboard — ダーク運用コンソール(palette.md ダーク列準拠) */
+:root {
+  --surface-1: #1a1a19;
+  --surface-2: #232322;
+  --surface-3: #2d2d2b;
+  --border: #3a3a37;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #8a897f;
+  --series-1: #3987e5; /* blue: 主系列(平均適合度・散逸度) */
+  --series-slot: #6b6a61; /* スロット別の細線(追従) */
+  --status-stable: #199e70;
+  --status-fixed: #c98500;
+  --status-chaotic: #e66767;
+  --status-unknown: #8a897f;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+  font-size: 14px;
+}
+a { color: var(--series-1); text-decoration: none; }
+button {
+  background: var(--surface-3);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+button:hover { background: var(--border); }
+button.primary { background: var(--series-1); border-color: var(--series-1); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+input, select {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.page { max-width: 1280px; margin: 0 auto; padding: 20px; }
+.panel {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
+.grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(12, 1fr);
+}
+.muted { color: var(--text-muted); }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid currentColor;
+}
+.badge::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: currentColor; }
+.badge.STABLE { color: var(--status-stable); }
+.badge.FIXED { color: var(--status-fixed); }
+.badge.CHAOTIC { color: var(--status-chaotic); }
+.badge.UNKNOWN { color: var(--status-unknown); }
+
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat .label { font-size: 11px; color: var(--text-muted); }
+.stat .value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.tile {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+}
+.tile.QUARANTINED { border-color: var(--status-chaotic); }
+.tile.REHATCHING { border-color: var(--status-fixed); }
+.tile .id { font-weight: 700; font-size: 14px; }
+.fitbar { height: 6px; background: var(--surface-1); border-radius: 3px; margin-top: 6px; }
+.fitbar > div { height: 100%; border-radius: 3px; background: var(--series-1); }
+
+.log { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; font-size: 12px; }
+.log li { padding: 6px 4px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; }
+.log .step { color: var(--text-muted); min-width: 64px; font-variant-numeric: tabular-nums; }
+
+table.events { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.events th, table.events td {
+  text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border);
+}
+table.events th { color: var(--text-muted); font-weight: 600; }

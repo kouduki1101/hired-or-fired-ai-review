@@ -1,0 +1,69 @@
+[project]
+name = "aios-workspace"
+version = "0.1.0"
+description = "AIOS - Multi-agent population long-term operation platform (workspace root)"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv.workspace]
+members = [
+    "packages/core",
+    "packages/common",
+    "packages/adapters",
+    "packages/storage",
+    "packages/sdk-python",
+    "apps/api",
+    "apps/orchestrator",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "aiosqlite>=0.20",
+    "aios-core",
+    "aios-common",
+    "aios-adapters",
+    "aios-storage",
+    "aios-sdk",
+    "aios-api",
+    "aios-orchestrator",
+]
+
+[tool.uv.sources]
+aios-core = { workspace = true }
+aios-common = { workspace = true }
+aios-adapters = { workspace = true }
+aios-storage = { workspace = true }
+aios-sdk = { workspace = true }
+aios-api = { workspace = true }
+aios-orchestrator = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Alembic自動生成リビジョンは整形対象外(手修正を最小化)
+extend-exclude = ["packages/storage/migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+mypy_path = ["packages/core/src", "packages/common/src", "apps/api/src"]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "packages/core/tests",
+    "packages/common/tests",
+    "packages/adapters/tests",
+    "packages/storage/tests",
+    "packages/sdk-python/tests",
+    "apps/api/tests",
+    "apps/orchestrator/tests",
+]
+asyncio_mode = "auto"
