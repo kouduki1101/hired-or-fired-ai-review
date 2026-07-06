@@ -27,11 +27,14 @@ class WebhookResponse(BaseModel):
 
 @router.post("/admin/webhooks", status_code=201, response_model=WebhookResponse)
 async def register_webhook(req: RegisterWebhookRequest) -> WebhookResponse:
+    from aios_api.auth import current_tenant
+
     STORE.notifier.register(
         WebhookEndpoint(
             url=str(req.url),
             secret=req.secret,
             events=frozenset(req.events) if req.events else None,
+            tenant=current_tenant.get(),
         )
     )
     return WebhookResponse(url=str(req.url), events=req.events)
@@ -39,9 +42,13 @@ async def register_webhook(req: RegisterWebhookRequest) -> WebhookResponse:
 
 @router.get("/admin/webhooks", response_model=list[WebhookResponse])
 async def list_webhooks() -> list[WebhookResponse]:
+    from aios_api.auth import current_tenant
+
+    tenant = current_tenant.get()
     return [
         WebhookResponse(url=e.url, events=sorted(e.events) if e.events else None)
         for e in STORE.notifier.list_endpoints()
+        if e.tenant == tenant
     ]
 
 

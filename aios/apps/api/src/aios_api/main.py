@@ -29,10 +29,18 @@ from aios_api.routers import (
 )
 
 
-def create_app(database_url: str | None = None) -> FastAPI:
+def create_app(
+    database_url: str | None = None,
+    api_keys: dict[str, str] | None = None,
+) -> FastAPI:
     """database_url(またはAIOS_DATABASE_URL)指定時は永続化が有効になり、
-    起動時にDBから全コホートをrehydrateする(NFR-AV-03)。"""
+    起動時にDBから全コホートをrehydrateする(NFR-AV-03)。
+    api_keys(またはAIOS_API_KEYS="key:tenant,...")指定時はAPIキー認証+
+    テナント分離が有効になる(FR-TN-01/02)。"""
+    from aios_api.auth import AuthMiddleware, resolve_api_keys
+
     url = database_url or os.environ.get("AIOS_DATABASE_URL")
+    resolved_keys = resolve_api_keys(api_keys)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -58,6 +66,8 @@ def create_app(database_url: str | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(admin.router, prefix="/v1")
+    # 認証→CORSの順でadd(後がouter): CORSプリフライトは認証より先に処理される
+    app.add_middleware(AuthMiddleware, api_keys=resolved_keys)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=os.environ.get("AIOS_CORS_ORIGINS", "http://localhost:3000").split(","),

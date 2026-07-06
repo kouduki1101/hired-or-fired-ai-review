@@ -18,6 +18,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from aios_api.auth import current_tenant
 from aios_api.notify import Notifier
 
 DEMO_DIM = 16
@@ -41,6 +42,7 @@ class DemoStore:
         self._cycle_history: dict[str, list[dict]] = {}  # cohort_id -> サイクル時系列
         self.notifier = Notifier()  # Webhook配送(FR-EX-01)
         self._sessionmaker: async_sessionmaker | None = None  # DB配線(任意)
+        self._tenants: dict[str, str] = {}  # cohort_id -> tenant(FR-TN-01)
         self._approvals: dict[str, dict] = {}  # 承認キュー(FR-GV-05)
         self._usage: dict[str, dict[str, int]] = {}  # 使用量カウンタ(FR-TN-03)
 
@@ -57,6 +59,9 @@ class DemoStore:
         self._task_records.clear()
         self._loop_states.clear()
         self._cycle_history.clear()
+        self._tenants.clear()
+        self._approvals.clear()
+        self._usage.clear()
 
     async def persist(self, cohort_id: str) -> None:
         """コホート状態をDBへ保存(未配線時はno-op)。"""
@@ -64,7 +69,12 @@ class DemoStore:
             return
         cohort = self.get_cohort(cohort_id)
         async with self._sessionmaker() as session, session.begin():
-            await save_cohort(session, cohort, display_name=self._names.get(cohort_id))
+            await save_cohort(
+                session,
+                cohort,
+                tenant_id=self.tenant_of(cohort_id),
+                display_name=self._names.get(cohort_id),
+            )
 
     async def rehydrate_all(self) -> int:
         """DBに保存済みの全コホートを復元する(起動時)。"""
@@ -78,8 +88,11 @@ class DemoStore:
             for row in rows:
                 if row.cohort_id in self._cohorts:
                     continue
-                cohort = await load_cohort(session, row.cohort_id, _restore_fake_adapter)
+                cohort = await load_cohort(
+                    session, row.cohort_id, _restore_fake_adapter, tenant_id=row.tenant_id
+                )
                 self._cohorts[cohort.cohort_id] = cohort
+                self._tenants[cohort.cohort_id] = row.tenant_id
                 self._names[cohort.cohort_id] = row.name
                 self._task_counts[cohort.cohort_id] = {s.slot_id: 0 for s in cohort.slots}
                 restored += 1
@@ -110,6 +123,7 @@ class DemoStore:
         approval_id = str(uuid.uuid4())
         self._approvals[approval_id] = {
             "approval_id": approval_id,
+            "tenant": self.tenant_of(cohort_id),
             "cohort_id": cohort_id,
             "action_type": action_type,  # 'rehatch' | 'dimension_expansion'
             "payload": payload,
@@ -121,13 +135,17 @@ class DemoStore:
 
     def get_approval(self, approval_id: str) -> dict:
         approval = self._approvals.get(approval_id)
-        if approval is None:
+        if approval is None or approval.get("tenant", "default") != current_tenant.get():
             raise HTTPException(status_code=404, detail="approval not found")
         return approval
 
     def list_approvals(self, status: str | None = None) -> list[dict]:
-        items = list(self._approvals.values())
-        return [a for a in items if status is None or a["status"] == status]
+        tenant = current_tenant.get()
+        return [
+            a for a in self._approvals.values()
+            if a.get("tenant", "default") == tenant
+            and (status is None or a["status"] == status)
+        ]
 
     # --- 使用量メータリング(FR-TN-03) ---
     def bump_usage(self, cohort_id: str, key: str, amount: int = 1) -> None:
@@ -136,7 +154,10 @@ class DemoStore:
 
     def usage(self) -> list[dict]:
         out = []
+        tenant = current_tenant.get()
         for cohort_id, cohort in self._cohorts.items():
+            if self.tenant_of(cohort_id) != tenant:
+                continue
             counters = self._usage.get(cohort_id, {})
             out.append(
                 {
@@ -164,17 +185,23 @@ class DemoStore:
             ema_alpha=ema_alpha,
         )
         self._cohorts[cohort.cohort_id] = cohort
+        self._tenants[cohort.cohort_id] = current_tenant.get()
         self._task_counts[cohort.cohort_id] = {s.slot_id: 0 for s in cohort.slots}
         return cohort
 
+    def tenant_of(self, cohort_id: str) -> str:
+        return self._tenants.get(cohort_id, "default")
+
     def get_cohort(self, cohort_id: str) -> CohortRuntime:
         cohort = self._cohorts.get(cohort_id)
-        if cohort is None:
+        # 他テナントのリソースは「存在しない」扱い(情報漏えい防止、NFR-SE-02)
+        if cohort is None or self.tenant_of(cohort_id) != current_tenant.get():
             raise HTTPException(status_code=404, detail="cohort not found")
         return cohort
 
     def list_cohorts(self) -> list[CohortRuntime]:
-        return list(self._cohorts.values())
+        tenant = current_tenant.get()
+        return [c for cid, c in self._cohorts.items() if self.tenant_of(cid) == tenant]
 
     # --- タスク割当シェア(支配的モデル検出の入力) ---
     def record_assignment(self, cohort_id: str, slot_id: str) -> None:
@@ -238,8 +265,11 @@ class DemoStore:
         self._loop_states[cohort_id] = state
 
     def find_cohort_by_slot(self, slot_id: str) -> CohortRuntime:
-        for cohort in self._cohorts.values():
-            if any(s.slot_id == slot_id for s in cohort.slots):
+        tenant = current_tenant.get()
+        for cid, cohort in self._cohorts.items():
+            if self.tenant_of(cid) == tenant and any(
+                s.slot_id == slot_id for s in cohort.slots
+            ):
                 return cohort
         raise HTTPException(status_code=404, detail="slot not found")
 

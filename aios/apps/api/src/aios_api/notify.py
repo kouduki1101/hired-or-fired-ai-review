@@ -24,6 +24,7 @@ class WebhookEndpoint:
     url: str
     secret: str
     events: frozenset[str] | None = None  # Noneは全イベント購読
+    tenant: str = "default"  # 登録テナント(FR-TN-01: 他テナントのイベントは届かない)
 
 
 @dataclass
@@ -54,8 +55,12 @@ class Notifier:
         return list(self._endpoints)
 
     async def emit(self, event_type: str, data: dict[str, Any]) -> None:
+        from aios_api.auth import current_tenant
+
+        tenant = current_tenant.get()
         targets = [
-            e for e in self._endpoints if e.events is None or event_type in e.events
+            e for e in self._endpoints
+            if e.tenant == tenant and (e.events is None or event_type in e.events)
         ]
         if not targets:
             return
