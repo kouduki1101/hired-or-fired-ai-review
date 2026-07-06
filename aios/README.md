@@ -18,16 +18,18 @@
 | 07 | [実装計画](docs/07_implementation_plan.md) | フェーズ分割、マイルストーン、実装手順、Definition of Done |
 | 08 | [プロジェクト構成](docs/08_project_structure.md) | モノレポのフォルダ構成と各モジュールの責務 |
 
-## 実装状況(P2まで完了)
+## 実装状況(P4前半まで完了 — 請求項1〜10すべて実装・テスト済み)
 
 | フェーズ | 状態 | 内容 |
 |---|---|---|
 | P0 基盤 | ✅ | uvモノレポ、CI、docker-compose(pgvector/redis/minio/api/dashboard) |
 | P1 コア制御ループ | ✅ | 指標演算(EMA/散逸度/適合度)、Rehatch-in-Place、卵層非再入、e2e(固着→自動復旧) |
-| P2 運用機能 | ✅ | スケジューラ、ルーティングAPI、リネージ/開示請求、自律提案調停、安全境界(禁止ベクトル→隔離→復旧)、ダッシュボード(図16)、永続化rehydrate、Webhook通知 |
-| P3/P4 | 未着手 | 監査エクスポート、承認ワークフロー、次元拡張API、マルチテナント/SSO/課金 |
+| P2 運用機能 | ✅ | スケジューラ、ルーティングAPI、リネージ/開示請求、自律提案調停、安全境界(禁止ベクトル→隔離→復旧)、ダッシュボード(図16)、永続化rehydrate、Webhook通知(HMAC署名) |
+| P3 ガバナンス | ✅ | 次元拡張API(請求項9)、監査エクスポート(NDJSON+完全性マニフェスト)、承認ワークフロー(manual時のRehatch/拡張は承認キュー経由) |
+| P4 商用化 | 前半✅ | 使用量メータリング、APIキー認証+テナント分離(コホート/承認/使用量/Webhookを分離、越境は404)。残: Alembic、OIDC/RBAC、Helm本番化、負荷試験、SDK公開 |
 
-テスト: Python 144件 + API契約テスト(請求項保証)。ダッシュボードは実サーバ+Playwrightで描画検証済み。
+テスト: Python 172件 + API契約テスト(請求項保証)。ダッシュボードは実サーバ+Playwrightで描画検証済み。
+請求項別の実装対応表は [docs/00_product_overview.md](docs/00_product_overview.md) §5 を参照。
 
 ## クイックスタート(ローカル)
 
