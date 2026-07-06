@@ -18,6 +18,38 @@
 | 07 | [実装計画](docs/07_implementation_plan.md) | フェーズ分割、マイルストーン、実装手順、Definition of Done |
 | 08 | [プロジェクト構成](docs/08_project_structure.md) | モノレポのフォルダ構成と各モジュールの責務 |
 
+## 実装状況(P2まで完了)
+
+| フェーズ | 状態 | 内容 |
+|---|---|---|
+| P0 基盤 | ✅ | uvモノレポ、CI、docker-compose(pgvector/redis/minio/api/dashboard) |
+| P1 コア制御ループ | ✅ | 指標演算(EMA/散逸度/適合度)、Rehatch-in-Place、卵層非再入、e2e(固着→自動復旧) |
+| P2 運用機能 | ✅ | スケジューラ、ルーティングAPI、リネージ/開示請求、自律提案調停、安全境界(禁止ベクトル→隔離→復旧)、ダッシュボード(図16)、永続化rehydrate、Webhook通知 |
+| P3/P4 | 未着手 | 監査エクスポート、承認ワークフロー、次元拡張API、マルチテナント/SSO/課金 |
+
+テスト: Python 144件 + API契約テスト(請求項保証)。ダッシュボードは実サーバ+Playwrightで描画検証済み。
+
+## クイックスタート(ローカル)
+
+```bash
+cd aios
+make install          # uv sync
+make test             # 144 tests
+make dev              # APIを :8080 で起動(インメモリ)
+AIOS_DATABASE_URL=sqlite+aiosqlite:///./aios.db make dev   # 永続化有効(再起動でrehydrate)
+
+cd apps/dashboard && npm install && npm run dev   # ダッシュボード :3000
+```
+
+APIだけで一巡する例:
+```bash
+curl -X POST :8080/v1/cohorts -H 'Content-Type: application/json' \
+  -d '{"name":"demo","slot_count":10}'                     # 卵層→固定母集団の生成
+curl -X POST :8080/v1/cohorts/<id>/cycles/run              # 制御サイクル(図10)1周
+curl -X POST :8080/v1/cohorts/<id>/tasks -d '{"input":{}}' # 成熟度×適合度ルーティング
+curl :8080/v1/lineage/tasks/<task_id>                      # 開示請求応答(誰が・なぜ)
+```
+
 ## 読む順番
 
 - **事業判断者**: 00 → 01 → 07
