@@ -25,6 +25,7 @@ class DemoStore:
         self._last_cycle: dict[str, CycleResult] = {}
         self._task_records: dict[str, dict] = {}  # task_id -> リネージ記録(FR-GV-01)
         self._loop_states: dict[str, str] = {}  # cohort_id -> RUNNING/PAUSED/DRY_RUN
+        self._cycle_history: dict[str, list[dict]] = {}  # cohort_id -> サイクル時系列
 
     def create_cohort(self, *, name: str, slot_count: int, ema_alpha: float) -> CohortRuntime:
         rng = np.random.default_rng(abs(hash(name)) % (2**32))
@@ -59,12 +60,41 @@ class DemoStore:
         for s in self.get_cohort(cohort_id).slots:
             s.assign_share = counts.get(s.slot_id, 0) / total if total else 0.0
 
-    # --- 制御サイクル結果 ---
+    # --- 制御サイクル結果(最新+履歴。履歴はダッシュボードのトレンド入力) ---
     def set_last_cycle(self, cohort_id: str, result: CycleResult) -> None:
         self._last_cycle[cohort_id] = result
+        cohort = self.get_cohort(cohort_id)
+        history = self._cycle_history.setdefault(cohort_id, [])
+        history.append(
+            {
+                "step_no": result.step_no,
+                "health": str(result.health),
+                "dissipation": None if result.dissipation != result.dissipation
+                else result.dissipation,  # NaN→None
+                "fitness_mean": None if result.fitness_mean != result.fitness_mean
+                else result.fitness_mean,
+                "lr_correction": result.lr_correction,
+                "noise_amount": result.noise_amount,
+                "rehatched": [
+                    {"slot_id": o.slot_id, "reason": o.reason, "committed": o.committed}
+                    for o in result.rehatched
+                ],
+                "quarantined": [
+                    {"slot_id": q.slot_id, "label": q.label} for q in result.quarantined
+                ],
+                "slots": [
+                    {"display_id": s.display_id, "fitness": s.fitness_hat}
+                    for s in cohort.slots
+                ],
+            }
+        )
+        del history[:-200]  # 直近200サイクルのみ保持(P2のPostgreSQL化で全履歴へ)
 
     def last_cycle(self, cohort_id: str) -> CycleResult | None:
         return self._last_cycle.get(cohort_id)
+
+    def cycle_history(self, cohort_id: str) -> list[dict]:
+        return self._cycle_history.get(cohort_id, [])
 
     # --- タスクリネージ記録(FR-GV-01: 担当時点の世代・判断・制御値を固定) ---
     def record_task(self, task_id: str, record: dict) -> None:

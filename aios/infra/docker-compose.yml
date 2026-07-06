@@ -28,6 +28,14 @@ services:
     ports: ["9000:9000", "9001:9001"]
     volumes: [miniodata:/data]
 
+  dashboard:
+    build:
+      context: ../apps/dashboard
+    environment:
+      NEXT_PUBLIC_AIOS_API: http://localhost:8080
+    ports: ["3000:3000"]
+    depends_on: [api]
+
   api:
     build:
       context: ..

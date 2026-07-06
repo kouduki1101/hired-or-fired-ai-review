@@ -49,6 +49,7 @@ class CycleSummary(BaseModel):
 class CurrentMetrics(BaseModel):
     cohort_id: str
     step_no: int
+    loop_state: str
     health: HealthStatus
     dissipation: float | None
     dynamics: dict[str, float]
@@ -130,6 +131,13 @@ async def run_control_cycle(cohort_id: str, dry_run: bool = False) -> CycleSumma
     return _summary(result)
 
 
+@router.get("/cohorts/{cohort_id}/metrics/history")
+async def metrics_history(cohort_id: str, limit: int = 100) -> list[dict]:
+    """サイクル時系列(ダッシュボードのトレンド&追従グラフ入力、FR-UI-03)。"""
+    STORE.get_cohort(cohort_id)  # 404チェック
+    return STORE.cycle_history(cohort_id)[-max(1, min(limit, 200)):]
+
+
 @router.get("/cohorts/{cohort_id}/metrics/current", response_model=CurrentMetrics)
 async def current_metrics(cohort_id: str) -> CurrentMetrics:
     cohort = STORE.get_cohort(cohort_id)
@@ -137,6 +145,7 @@ async def current_metrics(cohort_id: str) -> CurrentMetrics:
     return CurrentMetrics(
         cohort_id=cohort_id,
         step_no=cohort.step_no,
+        loop_state=STORE.loop_state(cohort_id),
         health=last.health if last else HealthStatus.UNKNOWN,
         dissipation=_nan_to_none(last.dissipation) if last else None,
         dynamics={

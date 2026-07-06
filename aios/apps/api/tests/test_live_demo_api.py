@@ -68,3 +68,29 @@ class TestControlCycle:
         client.post(f"/v1/cohorts/{cohort['cohort_id']}/cycles/run")
         after = client.get(f"/v1/cohorts/{cohort['cohort_id']}").json()
         assert all(s["fitness"] is not None for s in after["slots"])
+
+
+class TestMetricsHistory:
+    def test_history_accumulates_cycles(self) -> None:
+        """FR-UI-03: サイクル時系列がスロット別適合度込みで取得できる。"""
+        client = _client()
+        cohort = _create(client, "history-metrics-test")
+        cid = cohort["cohort_id"]
+        for _ in range(3):
+            client.post(f"/v1/cohorts/{cid}/cycles/run")
+        res = client.get(f"/v1/cohorts/{cid}/metrics/history")
+        assert res.status_code == 200
+        body = res.json()
+        assert [h["step_no"] for h in body] == [1, 2, 3]
+        assert all(len(h["slots"]) == 6 for h in body)
+        assert body[-1]["health"] in ("FIXED", "STABLE", "CHAOTIC")
+
+    def test_current_includes_loop_state(self) -> None:
+        client = _client()
+        cohort = _create(client, "loopstate-test")
+        cid = cohort["cohort_id"]
+        current = client.get(f"/v1/cohorts/{cid}/metrics/current").json()
+        assert current["loop_state"] == "RUNNING"
+        client.post(f"/v1/cohorts/{cid}/loop", json={"action": "pause"})
+        current = client.get(f"/v1/cohorts/{cid}/metrics/current").json()
+        assert current["loop_state"] == "PAUSED"
