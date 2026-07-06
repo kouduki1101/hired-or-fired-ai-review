@@ -3,10 +3,10 @@ name = "aios-storage"
 version = "0.1.0"
 description = "AIOS persistence: SQLAlchemy models, append-only event store, projections"
 requires-python = ">=3.11"
-dependencies = ["sqlalchemy[asyncio]>=2.0", "numpy>=1.26", "aios-core"]
+dependencies = ["sqlalchemy[asyncio]>=2.0", "numpy>=1.26", "alembic>=1.14", "aios-core"]
 
 [project.optional-dependencies]
-postgres = ["asyncpg>=0.30", "pgvector>=0.3", "alembic>=1.14"]
+postgres = ["asyncpg>=0.30", "pgvector>=0.3"]
 
 [tool.uv.sources]
 aios-core = { workspace = true }

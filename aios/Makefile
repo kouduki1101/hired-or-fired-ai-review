@@ -18,6 +18,9 @@ typecheck: install  ## mypy strict
 dev: install        ## APIをローカル起動
 	uv run uvicorn aios_api.main:app --reload --port 8080
 
+migrate: install    ## スキーマ適用(本番経路)。AIOS_ALEMBIC_URL=<同期ドライバURL> を指定
+	uv run alembic -c packages/storage/alembic.ini upgrade head
+
 compose-up:         ## 評価用スタック起動(postgres+pgvector, redis, minio, api)
 	docker compose -f infra/docker-compose.yml up -d --build
 

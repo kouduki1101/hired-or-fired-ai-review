@@ -42,6 +42,8 @@ aios-orchestrator = { workspace = true }
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Alembic自動生成リビジョンは整形対象外(手修正を最小化)
+extend-exclude = ["packages/storage/migrations/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
