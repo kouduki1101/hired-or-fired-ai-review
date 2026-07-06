@@ -1,0 +1,58 @@
+# AIOS Helm values(既定はSelf-Hosted最小構成)
+# 注意: 現行のControl Planeはコホート実体をプロセス内に保持するため api.replicas は 1 を推奨。
+#       水平スケールはP4後半のコホートシャーディング(orchestrator分離)導入後に解放する。
+
+image:
+  registry: ghcr.io/example  # 自組織のレジストリに変更
+  api:
+    repository: aios-api
+    tag: "0.1.0"
+  dashboard:
+    repository: aios-dashboard
+    tag: "0.1.0"
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+api:
+  replicas: 1
+  port: 8080
+  # 例: postgresql+asyncpg://aios:****@postgres:5432/aios(未指定はインメモリ=評価用)
+  databaseUrl: ""
+  # "key1:tenant-a,key2:tenant-b"。未指定は認証なし(開発モード)
+  apiKeys: ""
+  corsOrigins: "http://localhost:3000"
+  # 既存Secretを使う場合は指定(キー: databaseUrl, apiKeys)。指定時はchart管理Secretを作らない
+  existingSecret: ""
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
+dashboard:
+  enabled: true
+  replicas: 1
+  port: 3000
+  # ブラウザから到達できるAPIの公開URL
+  publicApiUrl: "http://localhost:8080"
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+# スキーマ適用(make migrate相当)をリリース毎にJobで実行する
+migrations:
+  enabled: true
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: aios.example.com
+  tls: []
+
+serviceAccount:
+  create: true
+  name: ""
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

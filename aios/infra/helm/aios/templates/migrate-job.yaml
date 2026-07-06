@@ -1,0 +1,38 @@
+{{- if and .Values.migrations.enabled .Values.api.databaseUrl }}
+# リリース毎にスキーマ適用(alembic upgrade head)。後方互換2バージョン運用(NFR-OP-05)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "aios.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels:
+    {{- include "aios.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "aios.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "aios.serviceAccountName" . }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.registry }}/{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["alembic", "-c", "packages/storage/alembic.ini", "upgrade", "head"]
+          env:
+            - name: AIOS_ALEMBIC_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "aios.secretName" . }}
+                  key: databaseUrl
+{{- end }}
