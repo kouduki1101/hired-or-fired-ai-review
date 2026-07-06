@@ -144,9 +144,24 @@
 | P1 | 6週 | ✅ 完了(M1デモ=固着→自動復旧をe2e化。蒸留/LoRAはP5へ計画どおり繰延) |
 | P2 | 5週 | ✅ 完了(M2=図16ダッシュボード実画面検証済み。ルーティングp95計測は未実施) |
 | P3 | 5週 | ✅ 完了(M3=開示請求API・監査エクスポート・安全境界・次元拡張・承認ワークフロー) |
-| P4 | 6週 | 🔶 前半完了(課金計測・APIキー認証・テナント分離)。残: Alembic、OIDC/RBAC、Helm、負荷試験、ペンテスト、SDK公開 |
-| P5 | 継続 | 未着手 |
+| P4 | 6週 | ✅ 完了。前半(課金計測・APIキー認証・テナント分離)に加え、後半(Alembic、Helm、CI強化、OIDC/RBAC、負荷試験、ペンテスト準備、SDK公開手続き)を実装 |
+| P5 | 継続 | 未着手(蒸留/LoRA 等の学習系 Rehatch、OpenTelemetry 実配線) |
 
-品質状態: Pythonテスト172件+API契約テスト(請求項1〜10保証)green。
-`test_claims.py` 相当は `apps/api/tests/contract/` + 各e2eに分散配置済み
-(専用回帰スイートへの集約はP4残作業)。
+品質状態: Pythonテスト196件+API契約テスト(請求項1〜10保証)green、1 skipped(PG結合はCIで実走)。
+lint(ruff)green、依存の既知脆弱性 0(pip-audit)。
+
+### P4後半の実績(2026-07-06)
+
+| 項目 | 実装 | 検証 |
+|---|---|---|
+| Alembic マイグレーション | `packages/storage/migrations` | ドリフトゼロ検証(SQLite/PG) |
+| CI 強化 | helm lint/template + PG 結合(pgvector) | GitHub Actions で実走 green |
+| OIDC SSO + RBAC | `apps/api/{oidc,rbac,auth}.py` | `test_oidc_rbac.py`(HS256/RS256、403/401) |
+| セキュリティハードニング | `apps/api/security.py`(ヘッダ) | `test_security_headers.py` |
+| 負荷試験 / 実測 | `loadtest/{benchmark,locustfile}.py` | ルーティング p95≈3ms(NFR-PF-01 充足) |
+| ペンテスト準備 | `docs/09_security.md`、`docs/security/pentest_scope.md`、`.github/SECURITY.md` | STRIDE + OWASP API Top10、`security-audit` CI |
+| SDK 公開手続き | `packages/sdk-python`(メタデータ/README/CHANGELOG/py.typed)、`sdk-publish.yml` | `uv build` + `twine check` PASSED、Trusted Publishing |
+
+残論点(要ユーザー判断): SDK ライセンス(現状 Proprietary 明記。client SDK として
+MIT/Apache 等への変更を検討可)、レート制限・Webhook 許可リスト(脅威モデル §5 の
+残存リスク、次期実装)。
