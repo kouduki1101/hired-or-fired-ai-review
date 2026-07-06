@@ -96,9 +96,9 @@ class TestSdkRoundtrip:
 
     def test_error_surface(self, base_url: str) -> None:
         """認証エラーがAiosApiError(status/aios_code)として現れる。"""
-        with Client(base_url=base_url, api_key="wrong-key") as bad:
-            with pytest.raises(AiosApiError) as ei:
-                bad.cohorts.list()
+        with Client(base_url=base_url, api_key="wrong-key") as bad, \
+                pytest.raises(AiosApiError) as ei:
+            bad.cohorts.list()
         assert ei.value.status == 401
         assert ei.value.aios_code == "unauthorized"
 
