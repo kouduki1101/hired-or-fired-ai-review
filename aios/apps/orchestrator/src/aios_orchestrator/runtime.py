@@ -17,7 +17,15 @@ from aios_adapters.spi import ModelAdapter, Vector
 from aios_common.errors import PhaseLockedError
 from aios_core.lineage.events import EventChainBuilder, SlotEvent, SlotEventType
 from aios_core.policy.health import HealthJudge
-from aios_core.types import CohortPhase, DynamicsSignal, HealthThresholds, SlotStatus, SlotView
+from aios_core.policy.safety import NegativeCentroid
+from aios_core.types import (
+    CohortPhase,
+    DynamicsSignal,
+    HealthStatus,
+    HealthThresholds,
+    SlotStatus,
+    SlotView,
+)
 
 
 @dataclass
@@ -68,6 +76,12 @@ class CohortRuntime:
     judge: HealthJudge = field(default_factory=HealthJudge)
     step_no: int = 0
     tv_history: list[Vector] = field(default_factory=list)
+    # 安全境界(FR-SF): 禁止ベクトルのレジストリ
+    negative_centroids: list[NegativeCentroid] = field(default_factory=list)
+    # 成熟点検出(FR-LC-04)用の時系列
+    drift_history: list[float] = field(default_factory=list)
+    health_history: list[HealthStatus] = field(default_factory=list)
+    fitness_mean_history: list[float] = field(default_factory=list)
 
 
 def hatch_cohort(

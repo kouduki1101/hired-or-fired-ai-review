@@ -25,11 +25,14 @@ from aios_core.metrics import (
 from aios_core.metrics.teacher import drift_rate
 from aios_core.policy.dynamics import adjust_dynamics
 from aios_core.policy.rehatch_select import RehatchSelection, select_rehatch_targets
+from aios_core.policy.safety import check_danger
+from aios_core.policy.stabilization import detect_stabilization_point
 from aios_core.types import (
     DynamicsConfig,
     HealthStatus,
     RehatchSelectConfig,
     SlotStatus,
+    StabilizationConfig,
 )
 
 from aios_orchestrator.runtime import CohortRuntime, SlotRuntime
@@ -39,6 +42,7 @@ from aios_orchestrator.runtime import CohortRuntime, SlotRuntime
 class CycleConfig:
     rehatch: RehatchSelectConfig = field(default_factory=RehatchSelectConfig)
     dynamics: DynamicsConfig = field(default_factory=DynamicsConfig)
+    stabilization: StabilizationConfig = field(default_factory=StabilizationConfig)
     smoke_floor: float = 0.5  # Rehatch検証の合格下限
     rehatch_noise: float = 0.05  # TV-Init時のノイズ幅σ
     dry_run: bool = False  # 判断のみ記録し作用しない
@@ -54,6 +58,13 @@ class RehatchOutcome:
 
 
 @dataclass(frozen=True)
+class QuarantineOutcome:
+    slot_id: str
+    label: str  # 触発した禁止ベクトル
+    similarity: float
+
+
+@dataclass(frozen=True)
 class CycleResult:
     step_no: int
     health: HealthStatus
@@ -63,6 +74,8 @@ class CycleResult:
     lr_correction: float
     noise_amount: float
     rehatched: list[RehatchOutcome]
+    quarantined: list[QuarantineOutcome]
+    stabilization_point: bool
     probe_missing: int
     dry_run: bool
 
@@ -146,6 +159,28 @@ async def run_cycle(
         else:
             states[s.slot_id] = v
 
+    # --- Safety: 禁止ベクトル照合(¶0237)。危険予兆スロットは即時隔離し、
+    #     当サイクルのTV計算から寄与を除外する(汚染除去、FR-SF-02/03) ---
+    quarantined: list[QuarantineOutcome] = []
+    if cohort.negative_centroids and not cfg.dry_run:
+        for s in active:
+            state = states.get(s.slot_id)
+            if state is None:
+                continue
+            hit = check_danger(state, cohort.negative_centroids)
+            if hit is not None:
+                s.status = SlotStatus.QUARANTINED
+                s.record(
+                    SlotEventType.QUARANTINED,
+                    {"centroid": hit.label, "similarity": round(hit.similarity, 6)},
+                    now,
+                )
+                del states[s.slot_id]  # TV(EMA)・散逸度への混入を防ぐ
+                quarantined.append(
+                    QuarantineOutcome(s.slot_id, hit.label, hit.similarity)
+                )
+        active = [s for s in active if s.status == SlotStatus.ACTIVE]
+
     if len(states) < 2:
         # 観測不能サイクル: 指標更新をスキップ(EMAを汚さない)
         return CycleResult(
@@ -157,6 +192,8 @@ async def run_cycle(
             lr_correction=cohort.dynamics.lr_correction,
             noise_amount=cohort.dynamics.noise_amount,
             rehatched=[],
+            quarantined=quarantined,
+            stabilization_point=False,
             probe_missing=missing,
             dry_run=cfg.dry_run,
         )
@@ -206,15 +243,92 @@ async def run_cycle(
             )
 
     fits = [s.fitness_hat for s in active if s.fitness_hat is not None]
+    fitness_mean = float(np.mean(fits)) if fits else float("nan")
+    tv_drift = drift_rate(tv_new, tv_prev)
+
+    # --- 成熟点検出(FR-LC-04): 3指標収束の監視(¶0238-0240) ---
+    cohort.drift_history.append(tv_drift)
+    cohort.health_history.append(health)
+    cohort.fitness_mean_history.append(fitness_mean)
+    stabilization = detect_stabilization_point(
+        cohort.drift_history,
+        cohort.health_history,
+        cohort.fitness_mean_history,
+        cfg.stabilization,
+    )
+
     return CycleResult(
         step_no=cohort.step_no,
         health=health,
         dissipation=dissipation,
-        tv_drift=drift_rate(tv_new, tv_prev),
-        fitness_mean=float(np.mean(fits)) if fits else float("nan"),
+        tv_drift=tv_drift,
+        fitness_mean=fitness_mean,
         lr_correction=cohort.dynamics.lr_correction,
         noise_amount=cohort.dynamics.noise_amount,
         rehatched=outcomes,
+        quarantined=quarantined,
+        stabilization_point=stabilization,
         probe_missing=missing,
         dry_run=cfg.dry_run,
     )
+
+
+async def restore_quarantined_slot(
+    cohort: CohortRuntime,
+    slot_id: str,
+    cfg: CycleConfig | None = None,
+    now: datetime | None = None,
+) -> RehatchOutcome:
+    """隔離スロットの復旧(FR-SF-02): 安全な状態(現行TV)からのRehatchで復帰させる。
+
+    検証はスモーク適合度に加え、禁止ベクトル非近接を要求する。
+    """
+    cfg = cfg or CycleConfig()
+    now = now or datetime.now(UTC)
+    slot = next(s for s in cohort.slots if s.slot_id == slot_id)
+    if slot.status != SlotStatus.QUARANTINED:
+        raise ValueError(f"slot {slot_id} is not quarantined (status={slot.status})")
+
+    rng = np.random.default_rng(cfg.rng_seed + cohort.step_no + 1)
+    slot.record(SlotEventType.REHATCH_STARTED, {"reason": "SAFETY"}, now)
+    rollback_config = await slot.adapter.snapshot()
+
+    tv = cohort.teacher_vector
+    target = tv + rng.normal(scale=cfg.rehatch_noise, size=tv.shape)
+    await slot.adapter.apply_params(ModelConfig(context_vector=tuple(float(x) for x in target)))
+
+    new_state = await slot.adapter.get_state([])
+    smoke_fitness = fitness_score(new_state, tv)
+    still_dangerous = (
+        check_danger(new_state, cohort.negative_centroids) is not None
+        if cohort.negative_centroids
+        else False
+    )
+
+    if smoke_fitness >= cfg.smoke_floor and not still_dangerous:
+        slot.generation += 1
+        slot.maturity = reset_maturity()
+        slot.fitness_hat = smoke_fitness
+        slot.last_rehatch_at = now
+        slot.record(
+            SlotEventType.REHATCH_COMPLETED,
+            {
+                "strategy": "tv_init",
+                "reason": "SAFETY",
+                "smoke_fitness": round(smoke_fitness, 6),
+                "maturity_after": 0,
+            },
+            now,
+        )
+        slot.status = SlotStatus.ACTIVE
+        slot.record(SlotEventType.RESTORED, {"from": "quarantine"}, now)
+        return RehatchOutcome(slot.slot_id, "SAFETY", True, slot.generation)
+
+    # 復旧失敗: 隔離を維持(直前構成へ戻す)
+    await slot.adapter.apply_params(rollback_config)
+    slot.record(
+        SlotEventType.REHATCH_ROLLED_BACK,
+        {"reason": "SAFETY", "smoke_fitness": round(smoke_fitness, 6)},
+        now,
+    )
+    return RehatchOutcome(slot.slot_id, "SAFETY", False, slot.generation)

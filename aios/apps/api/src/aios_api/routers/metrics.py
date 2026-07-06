@@ -25,6 +25,12 @@ class RehatchedSlot(BaseModel):
     new_generation: int
 
 
+class QuarantinedSlot(BaseModel):
+    slot_id: str
+    label: str
+    similarity: float
+
+
 class CycleSummary(BaseModel):
     step_no: int
     health: HealthStatus
@@ -34,6 +40,8 @@ class CycleSummary(BaseModel):
     lr_correction: float
     noise_amount: float
     rehatched: list[RehatchedSlot]
+    quarantined: list[QuarantinedSlot]
+    stabilization_point: bool
     probe_missing: int
     dry_run: bool
 
@@ -70,6 +78,11 @@ def _summary(result) -> CycleSummary:
             )
             for o in result.rehatched
         ],
+        quarantined=[
+            QuarantinedSlot(slot_id=q.slot_id, label=q.label, similarity=q.similarity)
+            for q in result.quarantined
+        ],
+        stabilization_point=result.stabilization_point,
         probe_missing=result.probe_missing,
         dry_run=result.dry_run,
     )
