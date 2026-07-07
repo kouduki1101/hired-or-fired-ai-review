@@ -40,6 +40,61 @@ class ModelConfig:
     params_uri: str | None = None  # 重み実体への参照(自前ホスト系)
 
 
+class TrainingStatus(StrEnum):
+    """学習系 Rehatch(蒸留・アダプタ再生成)の非同期ジョブ状態(docs/06 §7 手法B/C)。"""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class TrainingRequest:
+    """学習系 Rehatch ジョブの入力。教師ベクトルを目標に内部パラメータを最適化する。"""
+
+    slot_id: str
+    strategy: RehatchStrategy
+    teacher_vector: tuple[float, ...]
+    base_config: ModelConfig
+    max_steps: int = 10
+    target_fitness: float = 0.9
+
+
+@dataclass(frozen=True)
+class TrainingJobState:
+    """ジョブの進捗スナップショット(進捗可視化必須 ¶0057)。"""
+
+    job_id: str
+    status: TrainingStatus
+    progress: float  # 0.0..1.0
+    step: int
+    message: str = ""
+    result_config: ModelConfig | None = None  # SUCCEEDED 時のみ(適用対象の新構成)
+    score: float | None = None  # SUCCEEDED 時の到達適合度
+
+
+@runtime_checkable
+class Trainer(Protocol):
+    """学習系 Rehatch のジョブ実行基盤(データプレーン)。
+
+    制御プレーンは submit で投入し poll で進捗監視する。実体(GPU 学習等)は
+    本番アダプタが担い、テストは決定的な FakeTrainer で代替する。
+    """
+
+    def submit(self, request: TrainingRequest) -> str:
+        """ジョブを投入し job_id を返す。"""
+        ...
+
+    def poll(self, job_id: str) -> TrainingJobState:
+        """現在の進捗を返す(呼び出しごとに前進しうる)。"""
+        ...
+
+    def cancel(self, job_id: str) -> None:
+        """ジョブを中断する(冪等)。"""
+        ...
+
+
 @dataclass(frozen=True)
 class AdapterCapabilities:
     """Adapterが宣言する対応能力。Rehatch戦略の選択に使う。"""
