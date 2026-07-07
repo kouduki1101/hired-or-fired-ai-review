@@ -21,6 +21,8 @@ api:
   # "key1:tenant-a,key2:tenant-b"。未指定は認証なし(開発モード)
   apiKeys: ""
   corsOrigins: "http://localhost:3000"
+  # OpenTelemetry OTLP/HTTP エクスポート先(例: http://otel-collector:4318/v1/traces)。未指定は計装無効
+  otlpEndpoint: ""
   # 既存Secretを使う場合は指定(キー: databaseUrl, apiKeys)。指定時はchart管理Secretを作らない
   existingSecret: ""
   resources:

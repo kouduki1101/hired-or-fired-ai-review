@@ -145,10 +145,10 @@
 | P2 | 5週 | ✅ 完了(M2=図16ダッシュボード実画面検証済み。ルーティングp95計測は未実施) |
 | P3 | 5週 | ✅ 完了(M3=開示請求API・監査エクスポート・安全境界・次元拡張・承認ワークフロー) |
 | P4 | 6週 | ✅ 完了。前半(課金計測・APIキー認証・テナント分離)に加え、後半(Alembic、Helm、CI強化、OIDC/RBAC、負荷試験、ペンテスト準備、SDK公開手続き)を実装 |
-| P5 | 継続 | 未着手(蒸留/LoRA 等の学習系 Rehatch、OpenTelemetry 実配線) |
+| P5 | 継続 | 着手(OpenTelemetry 実配線=完了。残: 蒸留/LoRA 等の学習系 Rehatch) |
 
-品質状態: Pythonテスト196件+API契約テスト(請求項1〜10保証)green、1 skipped(PG結合はCIで実走)。
-lint(ruff)green、依存の既知脆弱性 0(pip-audit)。
+品質状態: Pythonテスト211件+API契約テスト(請求項1〜10保証)green、1 skipped(PG結合はCIで実走)。
+lint(ruff)green、依存の既知脆弱性 0(pip-audit)。P5でOpenTelemetry計装を追加。
 
 ### P4後半の実績(2026-07-06)
 
