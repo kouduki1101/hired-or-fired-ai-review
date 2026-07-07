@@ -52,10 +52,10 @@
 | API1 Broken Object Level Auth | 対応 | 全オブジェクトをテナントで絞込。越境 404 |
 | API2 Broken Authentication | 対応 | APIキー / OIDC(署名・exp・aud・iss) |
 | API3 Broken Object Property Level Auth | 部分 | 応答はレスポンスモデルで明示(過剰露出抑制)。シークレット非返却 |
-| API4 Unrestricted Resource Consumption | **残存** | レート制限・クォータは未実装(§5) |
+| API4 Unrestricted Resource Consumption | 対応 | テナント単位トークンバケット(`ratelimit.py`、AIOS_RATE_LIMIT_RPS)。分散は前段/共有ストアへ差替 |
 | API5 Broken Function Level Auth | 対応 | RBAC ロール階層で機能単位に制御 |
 | API6 Unrestricted Access to Sensitive Business Flows | 部分 | 承認ワークフロー(manual)で高影響操作をゲート |
-| API7 SSRF | 部分 | Webhook URL は管理者のみ登録可(ADMIN)。到達先の許可リストは§5 |
+| API7 SSRF | 対応 | Webhook URL は ADMIN のみ登録可 + `netguard.py` で内部IP遮断/許可リスト。解決不能名は egress 制御で補完 |
 | API8 Security Misconfiguration | 対応 | セキュリティヘッダ、CORS 明示、dev モードは非既定 |
 | API9 Improper Inventory Management | 対応 | `/v1` バージョニング、OpenAPI 自動生成、SDK CHANGELOG |
 | API10 Unsafe Consumption of APIs | 対応 | 依存は `security-audit` CI(pip-audit)で継続監査 |
@@ -70,14 +70,25 @@
 
 ---
 
-## 5. 残存リスク(ペンテスト重点 / 次期対応)
+## 5. 実装済みハードニングと残存リスク
 
-1. **レート制限・テナントクォータ未実装(API4)** — 現状はアプリ層に流量制御がない。
-   Ingress/APIゲートウェイでの暫定対処を前提とし、アプリ層トークンバケットを次期実装。
-2. **Webhook 送信先の許可リスト(API7/SSRF)** — 現状は任意 URL を許容。内部レンジ
-   遮断・ドメイン許可リストを次期実装。
-3. **監査ログの外部 WORM 保管** — ハッシュ連鎖で改竄検知は可能だが、削除耐性のある
+### 実装済み(当初「残存」から昇格)
+
+1. **レート制限(API4)** — テナント単位トークンバケット(`ratelimit.py`)。`AIOS_RATE_LIMIT_RPS`
+   /`AIOS_RATE_LIMIT_BURST` で有効化。超過は 429 + `Retry-After`。死活監視は非対象。
+   分散構成では前段(Ingress)または共有ストア実装へ差し替える第一防御線。
+2. **Webhook SSRF ガード(API7)** — `netguard.py` が登録時に URL を検証。IP リテラル/
+   名前解決結果がループバック・RFC1918・リンクローカル(169.254.169.254 等)・予約
+   に該当すれば 422。既定 https のみ。`AIOS_WEBHOOK_ALLOWED_HOSTS` で許可リスト強制。
+
+### 残存(次期 / 運用設計)
+
+3. **解決不能ホスト名の SSRF** — DNS 解決に失敗するホスト名は内部と断定できず許可する。
+   実運用ではコンテナ/ネットワークのエグレス制御(NetworkPolicy 等)で補完する。
+4. **レート制限の分散一貫性** — 現状はプロセス内。マルチレプリカでは前段集約か
+   共有ストア(Redis 等)実装へ。
+5. **監査ログの外部 WORM 保管** — ハッシュ連鎖で改竄検知は可能だが、削除耐性のある
    外部ストレージへの複製は運用設計事項。
-4. **秘密管理** — 本番は External Secrets/KMS 前提(Helm は `existingSecret` 対応済)。
+6. **秘密管理** — 本番は External Secrets/KMS 前提(Helm は `existingSecret` 対応済)。
 
 これらは `docs/security/pentest_scope.md` の「重点確認項目」に反映する。

@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from aios_api.oidc import OidcConfig
+from aios_api.ratelimit import RateLimitConfig
 from aios_api.routers import (
     admin,
     approvals,
@@ -35,6 +36,7 @@ def create_app(
     database_url: str | None = None,
     api_keys: dict[str, str] | None = None,
     oidc: OidcConfig | None = None,
+    rate_limit: RateLimitConfig | None = None,
 ) -> FastAPI:
     """database_url(またはAIOS_DATABASE_URL)指定時は永続化が有効になり、
     起動時にDBから全コホートをrehydrateする(NFR-AV-03)。
@@ -47,6 +49,7 @@ def create_app(
     url = database_url or os.environ.get("AIOS_DATABASE_URL")
     resolved_keys = resolve_api_keys(api_keys)
     resolved_oidc = oidc if oidc is not None else OidcConfig.from_env()
+    resolved_rate_limit = rate_limit if rate_limit is not None else RateLimitConfig.from_env()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -73,7 +76,12 @@ def create_app(
     )
     app.include_router(admin.router, prefix="/v1")
     # 認証→CORSの順でadd(後がouter): CORSプリフライトは認証より先に処理される
-    app.add_middleware(AuthMiddleware, api_keys=resolved_keys, oidc=resolved_oidc)
+    app.add_middleware(
+        AuthMiddleware,
+        api_keys=resolved_keys,
+        oidc=resolved_oidc,
+        rate_limit=resolved_rate_limit,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=os.environ.get("AIOS_CORS_ORIGINS", "http://localhost:3000").split(","),

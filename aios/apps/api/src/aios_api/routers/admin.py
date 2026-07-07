@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field, HttpUrl
 
+from aios_api.netguard import validate_webhook_url
 from aios_api.notify import WebhookEndpoint
 from aios_api.store import STORE
 
@@ -29,6 +30,8 @@ class WebhookResponse(BaseModel):
 async def register_webhook(req: RegisterWebhookRequest) -> WebhookResponse:
     from aios_api.auth import current_tenant
 
+    # SSRF ガード(API7): 内部網・許可外ホストへの登録を遮断
+    validate_webhook_url(str(req.url))
     STORE.notifier.register(
         WebhookEndpoint(
             url=str(req.url),

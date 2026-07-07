@@ -24,6 +24,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from aios_api.oidc import OidcConfig, OidcError, OidcVerifier
+from aios_api.ratelimit import RateLimitConfig, TokenBucketLimiter
 from aios_api.rbac import Principal, Role, required_role
 
 DEFAULT_TENANT = "default"
@@ -67,10 +68,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         app,
         api_keys: dict[str, str],
         oidc: OidcConfig | None = None,
+        rate_limit: RateLimitConfig | None = None,
     ) -> None:
         super().__init__(app)
         self._api_keys = api_keys
         self._verifier = OidcVerifier(oidc) if oidc is not None else None
+        self._limiter = TokenBucketLimiter(rate_limit) if rate_limit is not None else None
 
     async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
         path = request.url.path
@@ -83,6 +86,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if isinstance(resolved, Response):
                 return resolved
             principal = resolved
+            # レート制限(API4): テナント単位のトークンバケット
+            if self._limiter is not None:
+                allowed, retry_after = self._limiter.allow(principal.tenant)
+                if not allowed:
+                    return _rate_limited(retry_after)
             # RBAC: 要求ロールに満たなければ 403
             if principal.role < required_role(request.method, path):
                 return _forbidden(
@@ -144,4 +152,18 @@ def _forbidden(detail: str) -> JSONResponse:
             "aios_code": "forbidden",
         },
         media_type="application/problem+json",
+    )
+
+
+def _rate_limited(retry_after: float) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={
+            "type": "https://docs.aios.example/errors/rate_limited",
+            "title": "rate_limited",
+            "detail": "tenant request rate exceeded",
+            "aios_code": "rate_limited",
+        },
+        media_type="application/problem+json",
+        headers={"Retry-After": str(max(1, round(retry_after)))},
     )

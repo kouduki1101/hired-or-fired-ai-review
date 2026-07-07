@@ -45,3 +45,17 @@ class QuarantinedError(AiosError):
 class BudgetExceededError(AiosError):
     code = "budget_exceeded"
     status = 429
+
+
+class RateLimitedError(AiosError):
+    """テナント単位のレート上限超過(API4: リソース消費制限)。"""
+
+    code = "rate_limited"
+    status = 429
+
+
+class InvalidWebhookUrlError(AiosError):
+    """Webhook 送信先が SSRF ガードに抵触(API7: プライベート網/許可外ホスト)。"""
+
+    code = "invalid_webhook_url"
+    status = 422
