@@ -15,6 +15,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from aios_api.oidc import OidcConfig
+from aios_api.ratelimit import RateLimitConfig
 from aios_api.routers import (
     admin,
     approvals,
@@ -27,20 +29,27 @@ from aios_api.routers import (
     scaling,
     tasks,
 )
+from aios_api.security import SecurityHeadersMiddleware
 
 
 def create_app(
     database_url: str | None = None,
     api_keys: dict[str, str] | None = None,
+    oidc: OidcConfig | None = None,
+    rate_limit: RateLimitConfig | None = None,
 ) -> FastAPI:
     """database_url(またはAIOS_DATABASE_URL)指定時は永続化が有効になり、
     起動時にDBから全コホートをrehydrateする(NFR-AV-03)。
     api_keys(またはAIOS_API_KEYS="key:tenant,...")指定時はAPIキー認証+
-    テナント分離が有効になる(FR-TN-01/02)。"""
+    テナント分離が有効になる(FR-TN-01/02)。
+    oidc(またはAIOS_OIDC_ISSUER/AUDIENCE 環境変数)指定時は OIDC Bearer 認証+
+    RBAC が有効になる(FR-TN-02 / NFR-SE-05)。"""
     from aios_api.auth import AuthMiddleware, resolve_api_keys
 
     url = database_url or os.environ.get("AIOS_DATABASE_URL")
     resolved_keys = resolve_api_keys(api_keys)
+    resolved_oidc = oidc if oidc is not None else OidcConfig.from_env()
+    resolved_rate_limit = rate_limit if rate_limit is not None else RateLimitConfig.from_env()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -67,13 +76,20 @@ def create_app(
     )
     app.include_router(admin.router, prefix="/v1")
     # 認証→CORSの順でadd(後がouter): CORSプリフライトは認証より先に処理される
-    app.add_middleware(AuthMiddleware, api_keys=resolved_keys)
+    app.add_middleware(
+        AuthMiddleware,
+        api_keys=resolved_keys,
+        oidc=resolved_oidc,
+        rate_limit=resolved_rate_limit,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=os.environ.get("AIOS_CORS_ORIGINS", "http://localhost:3000").split(","),
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # 最外層: 全レスポンス(エラー含む)にセキュリティヘッダを付与(多層防御)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.include_router(health.router)
     app.include_router(cohorts.router, prefix="/v1")
     app.include_router(tasks.router, prefix="/v1")

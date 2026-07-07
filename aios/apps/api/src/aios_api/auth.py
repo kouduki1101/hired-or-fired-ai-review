@@ -1,11 +1,17 @@
-"""APIキー認証とテナントコンテキスト(FR-TN-01/02)。
+"""認証(APIキー / OIDC Bearer)+ RBAC + テナントコンテキスト(FR-TN-01/02)。
 
-- キーは `X-API-Key` ヘッダで提示。設定は AIOS_API_KEYS="key1:tenant-a,key2:tenant-b"
-  または create_app(api_keys={key: tenant_id})
-- キー未設定(開発モード)では認証をスキップし、全リクエストを "default" テナントとする
-- 解決したテナントは ContextVar 経由でストア層に伝播し、
-  コホート・承認・使用量・Webhookがテナント単位に分離される(NFR-SE-02)
-- P4後半: OIDC SSO/RBACはこの層を置換する形で導入する(FR-TN-02)
+認証は2系統:
+- `X-API-Key`: 設定は AIOS_API_KEYS="key1:tenant-a,key2:tenant-b"。
+  APIキーは既定で ADMIN(サービスアカウント相当)。
+- `Authorization: Bearer <JWT>`: OIDC 設定(AIOS_OIDC_*)がある場合のみ有効。
+  テナント・ロールはトークンのクレームから解決する(oidc.py)。
+
+いずれの経路でも解決された主体(Principal)を元に、
+- テナントを ContextVar 経由でストア層へ伝播(NFR-SE-02)
+- ロールと要求ロール(rbac.required_role)を突き合わせ、不足なら 403(NFR-SE-05)
+
+キーも OIDC も未設定(開発モード)では認証をスキップし、
+全リクエストを ADMIN/"default" テナントとして扱う。
 """
 
 from __future__ import annotations
@@ -17,8 +23,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from aios_api.oidc import OidcConfig, OidcError, OidcVerifier
+from aios_api.ratelimit import RateLimitConfig, TokenBucketLimiter
+from aios_api.rbac import Principal, Role, required_role
+
 DEFAULT_TENANT = "default"
 current_tenant: ContextVar[str] = ContextVar("aios_tenant", default=DEFAULT_TENANT)
+current_principal: ContextVar[Principal | None] = ContextVar("aios_principal", default=None)
 
 # 認証免除パス(死活監視・APIドキュメント)
 EXEMPT_PATHS = {"/healthz", "/readyz", "/docs", "/openapi.json", "/redoc"}
@@ -47,28 +58,74 @@ def resolve_api_keys(explicit: dict[str, str] | None) -> dict[str, str]:
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """X-API-Key を検証しテナントを解決する。キー未設定時は素通し(devモード)。"""
+    """APIキー/Bearer を検証し主体を解決、RBAC を適用する。
 
-    def __init__(self, app, api_keys: dict[str, str]) -> None:  # type: ignore[no-untyped-def]
+    api_keys も oidc も未設定なら素通し(devモード= ADMIN/default)。
+    """
+
+    def __init__(  # type: ignore[no-untyped-def]
+        self,
+        app,
+        api_keys: dict[str, str],
+        oidc: OidcConfig | None = None,
+        rate_limit: RateLimitConfig | None = None,
+    ) -> None:
         super().__init__(app)
         self._api_keys = api_keys
+        self._verifier = OidcVerifier(oidc) if oidc is not None else None
+        self._limiter = TokenBucketLimiter(rate_limit) if rate_limit is not None else None
 
     async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
-        if not self._api_keys or request.url.path in EXEMPT_PATHS:
-            tenant = DEFAULT_TENANT
-        else:
-            key = request.headers.get("X-API-Key")
-            if key is None:
-                return _unauthorized("missing X-API-Key header")
-            tenant = self._api_keys.get(key)  # type: ignore[assignment]
-            if tenant is None:
-                return _unauthorized("invalid API key")
+        path = request.url.path
+        auth_enabled = bool(self._api_keys) or self._verifier is not None
 
-        token = current_tenant.set(tenant)
+        if not auth_enabled or path in EXEMPT_PATHS:
+            principal = Principal(DEFAULT_TENANT, Role.ADMIN, "dev", "dev")
+        else:
+            resolved = self._authenticate(request)
+            if isinstance(resolved, Response):
+                return resolved
+            principal = resolved
+            # レート制限(API4): テナント単位のトークンバケット
+            if self._limiter is not None:
+                allowed, retry_after = self._limiter.allow(principal.tenant)
+                if not allowed:
+                    return _rate_limited(retry_after)
+            # RBAC: 要求ロールに満たなければ 403
+            if principal.role < required_role(request.method, path):
+                return _forbidden(
+                    f"role {principal.role.name.lower()} lacks permission for "
+                    f"{request.method} {path}"
+                )
+
+        tenant_token = current_tenant.set(principal.tenant)
+        principal_token = current_principal.set(principal)
         try:
             return await call_next(request)
         finally:
-            current_tenant.reset(token)
+            current_tenant.reset(tenant_token)
+            current_principal.reset(principal_token)
+
+    def _authenticate(self, request: Request) -> Principal | Response:
+        """APIキー優先、無ければ Bearer。失敗時は 401 レスポンスを返す。"""
+        api_key = request.headers.get("X-API-Key")
+        if api_key is not None:
+            tenant = self._api_keys.get(api_key)
+            if tenant is None:
+                return _unauthorized("invalid API key")
+            return Principal(tenant, Role.ADMIN, f"apikey:{tenant}", "api_key")
+
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer ") and self._verifier is not None:
+            token = auth_header[len("Bearer ") :].strip()
+            try:
+                return self._verifier.verify(token)
+            except OidcError as exc:
+                return _unauthorized(str(exc))
+
+        if self._verifier is not None:
+            return _unauthorized("missing X-API-Key or Bearer token")
+        return _unauthorized("missing X-API-Key header")
 
 
 def _unauthorized(detail: str) -> JSONResponse:
@@ -81,5 +138,32 @@ def _unauthorized(detail: str) -> JSONResponse:
             "aios_code": "unauthorized",
         },
         media_type="application/problem+json",
-        headers={"WWW-Authenticate": "ApiKey"},
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def _forbidden(detail: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=403,
+        content={
+            "type": "https://docs.aios.example/errors/forbidden",
+            "title": "forbidden",
+            "detail": detail,
+            "aios_code": "forbidden",
+        },
+        media_type="application/problem+json",
+    )
+
+
+def _rate_limited(retry_after: float) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={
+            "type": "https://docs.aios.example/errors/rate_limited",
+            "title": "rate_limited",
+            "detail": "tenant request rate exceeded",
+            "aios_code": "rate_limited",
+        },
+        media_type="application/problem+json",
+        headers={"Retry-After": str(max(1, round(retry_after)))},
     )

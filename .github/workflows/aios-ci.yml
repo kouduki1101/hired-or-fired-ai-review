@@ -53,3 +53,16 @@ jobs:
         run: helm lint infra/helm/aios
       - name: Helm template (smoke render)
         run: helm template aios infra/helm/aios > /dev/null
+
+  security-audit:
+    # 依存関係の既知脆弱性を pip-audit で継続監査(NFR-SE / 脅威モデル §4)。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Export locked dependencies
+        run: |
+          uv export --format requirements-txt --all-packages \
+            | grep -v '^-e' | grep -v 'file://' > requirements-audit.txt
+      - name: Audit dependencies (pip-audit)
+        run: uvx pip-audit -r requirements-audit.txt
