@@ -9,6 +9,7 @@ import { use, useCallback, useEffect, useState } from "react";
 
 import { DissipationMeter, healthLabel } from "@/components/DissipationMeter";
 import { SlotTiles } from "@/components/SlotTiles";
+import { TrainingPanel } from "@/components/TrainingPanel";
 import { TrendChart } from "@/components/TrendChart";
 import { api, type Cohort, type CurrentMetrics, type CycleHistoryEntry } from "@/lib/api";
 
@@ -135,6 +136,12 @@ export default function CohortDashboard({ params }: { params: Promise<{ id: stri
         <section className="panel" style={{ gridColumn: "span 12" }}>
           <h2>スロット(固定母集団 — 削除不可の管理単位)</h2>
           <SlotTiles slots={cohort.slots} />
+        </section>
+
+        {/* 学習系Rehatch(蒸留/LoRA)進捗(P5 / 進捗可視化必須) */}
+        <section className="panel" style={{ gridColumn: "span 12" }}>
+          <h2>学習系 Rehatch(蒸留)— 非同期ジョブ進捗</h2>
+          <TrainingPanel cohortId={id} slots={cohort.slots} onDone={() => void refresh()} />
         </section>
 
         {/* 1512 イベントログ(FR-UI-06) */}

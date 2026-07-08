@@ -45,6 +45,19 @@ export interface CycleHistoryEntry {
   slots: { display_id: string; fitness: number | null }[];
 }
 
+export interface TrainingState {
+  job_id: string;
+  slot_id: string;
+  status: string;
+  progress: number;
+  step: number;
+  message?: string;
+  score?: number | null;
+  applied?: boolean;
+  committed?: boolean | null;
+  generation?: number | null;
+}
+
 export interface SlotHistory {
   slot_id: string;
   display_id: string;
@@ -91,4 +104,13 @@ export const api = {
       }),
     }),
   slotHistory: (slotId: string) => req<SlotHistory>(`/v1/lineage/slots/${slotId}/history`),
+  trainRehatch: (id: string, slotId: string, maxSteps = 8) =>
+    req<TrainingState>(`/v1/cohorts/${id}/slots/${slotId}/rehatch/train`, {
+      method: "POST",
+      body: JSON.stringify({ strategy: "distillation", max_steps: maxSteps }),
+    }),
+  advanceTraining: (id: string, slotId: string, jobId: string) =>
+    req<TrainingState>(`/v1/cohorts/${id}/slots/${slotId}/rehatch/train/${jobId}/advance`, {
+      method: "POST",
+    }),
 };

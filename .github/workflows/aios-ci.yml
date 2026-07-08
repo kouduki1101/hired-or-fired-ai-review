@@ -66,3 +66,20 @@ jobs:
             | grep -v '^-e' | grep -v 'file://' > requirements-audit.txt
       - name: Audit dependencies (pip-audit)
         run: uvx pip-audit -r requirements-audit.txt
+
+  dashboard:
+    # ダッシュボード(Next.js)の型チェック込みビルド。UI回帰を CI で検出する。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: aios/apps/dashboard/package-lock.json
+      - name: Install dependencies
+        working-directory: aios/apps/dashboard
+        run: npm ci
+      - name: Build (next build = type-check + compile)
+        working-directory: aios/apps/dashboard
+        run: npm run build
