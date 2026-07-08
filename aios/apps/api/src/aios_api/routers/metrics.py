@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from aios_api.store import STORE
+from aios_api.telemetry import tracer
 
 router = APIRouter(tags=["metrics"])
 
@@ -132,9 +133,15 @@ async def run_control_cycle(cohort_id: str, dry_run: bool = False) -> CycleSumma
     effective_dry_run = dry_run or loop_state == "DRY_RUN"
     previous = STORE.last_cycle(cohort_id)
     defer = cohort.approval_mode == "manual"  # 承認モード(FR-GV-05)
-    result = await run_cycle(
-        cohort, CycleConfig(dry_run=effective_dry_run, defer_rehatch=defer)
-    )
+    with tracer.start_as_current_span("aios.cycle.run") as span:
+        span.set_attribute("aios.cohort_id", cohort_id)
+        span.set_attribute("aios.dry_run", effective_dry_run)
+        result = await run_cycle(
+            cohort, CycleConfig(dry_run=effective_dry_run, defer_rehatch=defer)
+        )
+        span.set_attribute("aios.step_no", result.step_no)
+        span.set_attribute("aios.health", str(result.health))
+        span.set_attribute("aios.rehatch_count", len(result.rehatched))
     STORE.set_last_cycle(cohort_id, result)
     for p_r in result.pending_rehatch:
         STORE.add_approval(

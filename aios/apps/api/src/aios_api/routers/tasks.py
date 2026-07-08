@@ -14,6 +14,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from aios_api.store import STORE
+from aios_api.telemetry import tracer
 
 router = APIRouter(tags=["tasks"])
 
@@ -54,7 +55,11 @@ async def submit_task(cohort_id: str, req: SubmitTaskRequest) -> TaskResponse:
         difficulty=req.metadata.difficulty,
         category=req.metadata.category,
     )
-    decision = route_task(meta, [s.view() for s in cohort.slots])
+    with tracer.start_as_current_span("aios.task.route") as span:
+        span.set_attribute("aios.cohort_id", cohort_id)
+        span.set_attribute("aios.importance", str(req.metadata.importance))
+        decision = route_task(meta, [s.view() for s in cohort.slots])
+        span.set_attribute("aios.routed_cluster", str(decision.cluster))
     slot = next(s for s in cohort.slots if s.slot_id == decision.chosen_slot_id)
 
     # リネージ: 担当時点の世代・判断理由をイベントとして固定記録(FR-GV-01)

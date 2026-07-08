@@ -139,12 +139,24 @@ hyperparams_new   = 既定値へ回帰 + dynamics信号を反映
 kb_access_policy  = TV_tの価値軸ラベルに応じ再設定
 ```
 
+### 同期戦略と非同期(学習系)戦略の実行モデル
+
+- **同期**(戦略A/D=TV-Init・Prompt-Recompose): 即時。制御サイクル内で `_execute_rehatch`
+  が適用→スモーク→確定/ロールバックまで一括実行(`apps/orchestrator/cycle.py`)。
+- **非同期**(戦略B/C=Adapter-Regen・Distillation): 時間を要する学習ジョブ(¶0057「非同期
+  ジョブ・進捗可視化必須」)。`TrainingCoordinator`(`apps/orchestrator/training.py`)が
+  `Trainer` SPI(`submit`/`poll`/`cancel`)へ投入し進捗監視する。**学習はシャドウで進み、
+  スロットは学習中もタスクを処理**。完了時に新構成を適用し、下記の検証を経て確定。
+  監査は `TRAINING_STEP`(進捗)+ `REHATCH_STARTED/COMPLETED/ROLLED_BACK`(確定/巻戻し)。
+  実 GPU 学習は本番 `Trainer` 実装が担い、テストは決定的 `FakeTrainer` で代替する。
+
 ### 検証とロールバック(FR-RH-03)
 ```
 スモークプローブ実行 → fitness_smoke ≥ cfg.smoke_floor ∧ 禁止ベクトル類似度 < θ_danger
   合格 → commit(世代+1、スナップショット保存、成熟度更新)
   不合格 → 直前世代スナップショットを再適用 → REHATCH_ROLLED_BACK イベント
 ```
+同期・非同期いずれの戦略もこの確定/ロールバック規則は共通(一貫した監査像)。
 
 ## 8. ダイナミクス調整(請求項7) — 図13
 
