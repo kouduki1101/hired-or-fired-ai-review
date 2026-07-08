@@ -10,10 +10,12 @@ from __future__ import annotations
 import numpy as np
 from aios_adapters.fake import FakeAgentAdapter
 from aios_adapters.spi import ModelConfig
+from aios_adapters.training_fake import FakeTrainer
 from aios_core.types import HealthThresholds
 from aios_orchestrator.cycle import CycleResult
 from aios_orchestrator.persistence import load_cohort, save_cohort
 from aios_orchestrator.runtime import CohortRuntime, hatch_cohort
+from aios_orchestrator.training import TrainingCoordinator
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -45,6 +47,9 @@ class DemoStore:
         self._tenants: dict[str, str] = {}  # cohort_id -> tenant(FR-TN-01)
         self._approvals: dict[str, dict] = {}  # 承認キュー(FR-GV-05)
         self._usage: dict[str, dict[str, int]] = {}  # 使用量カウンタ(FR-TN-03)
+        # 学習系Rehatch調停(P5)。ジョブ状態はプロセス内(再起動で中断中ジョブは破棄)。
+        # 既定はFakeTrainer。本番はTrainer Protocolを満たす実蒸留/LoRAへ差替。
+        self.training = TrainingCoordinator(FakeTrainer())
 
     # --- 永続化配線(AIOS_DATABASE_URL設定時のみ有効) ---
     def attach_db(self, sessionmaker: async_sessionmaker) -> None:
@@ -62,6 +67,7 @@ class DemoStore:
         self._tenants.clear()
         self._approvals.clear()
         self._usage.clear()
+        self.training = TrainingCoordinator(FakeTrainer())
 
     async def persist(self, cohort_id: str) -> None:
         """コホート状態をDBへ保存(未配線時はno-op)。"""

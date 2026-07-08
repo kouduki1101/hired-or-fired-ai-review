@@ -47,7 +47,7 @@ print(aios.lineage.task(result["task_id"])["explanation"])
 |---|---|
 | `aios.cohorts` | `create`, `list`, `get` |
 | `cohort.tasks` | `run` (route + execute) |
-| `cohort` | `metrics`, `metrics_history`, `run_cycle`, `pause`, `resume`, `set_slot_lock`, `quarantine`, `restore`, `register_negative_centroid`, `expand_dimension`, `export_audit`, `export_manifest` |
+| `cohort` | `metrics`, `metrics_history`, `run_cycle`, `pause`, `resume`, `set_slot_lock`, `quarantine`, `restore`, `register_negative_centroid`, `train_rehatch`, `advance_training`, `expand_dimension`, `export_audit`, `export_manifest` |
 | `aios.lineage` | `task` (disclosure response), `slot_history` |
 | `aios.approvals` | `list`, `approve`, `reject` |
 | `aios.proposals` | `submit` (agent autonomous proposal) |

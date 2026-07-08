@@ -28,6 +28,7 @@ from aios_api.routers import (
     safety,
     scaling,
     tasks,
+    training,
 )
 from aios_api.security import SecurityHeadersMiddleware
 from aios_api.telemetry import configure_telemetry
@@ -100,6 +101,7 @@ def create_app(
     app.include_router(safety.router, prefix="/v1")
     app.include_router(scaling.router, prefix="/v1")
     app.include_router(approvals.router, prefix="/v1")
+    app.include_router(training.router, prefix="/v1")
 
     # 可観測性(NFR-OP): AIOS_OTEL_* 設定時のみ計装を有効化
     configure_telemetry(app)

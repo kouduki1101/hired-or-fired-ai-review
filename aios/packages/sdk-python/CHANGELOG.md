@@ -6,6 +6,10 @@ All notable changes to `aios-sdk` are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `CohortHandle.train_rehatch` / `advance_training`: async learning-based Rehatch
+  (distillation/LoRA) job submission and progress-driven application.
+
 ## [0.1.0] - 2026-07-06
 
 ### Added

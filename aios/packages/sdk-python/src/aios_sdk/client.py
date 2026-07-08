@@ -137,6 +137,31 @@ class CohortHandle:
             },
         )
 
+    # --- 学習系 Rehatch(蒸留/LoRA、非同期ジョブ) ---
+    def train_rehatch(
+        self,
+        slot_id: str,
+        *,
+        strategy: str = "distillation",
+        max_steps: int = 10,
+        target_fitness: float = 0.9,
+    ) -> dict[str, Any]:
+        """学習系 Rehatch ジョブを投入する(202)。返り値の job_id を advance で進める。"""
+        return self._c.post(
+            f"/v1/cohorts/{self.cohort_id}/slots/{slot_id}/rehatch/train",
+            json={
+                "strategy": strategy,
+                "max_steps": max_steps,
+                "target_fitness": target_fitness,
+            },
+        )
+
+    def advance_training(self, slot_id: str, job_id: str) -> dict[str, Any]:
+        """ジョブを1ステップ進め、完了時は Rehatch-in-Place を適用する。"""
+        return self._c.post(
+            f"/v1/cohorts/{self.cohort_id}/slots/{slot_id}/rehatch/train/{job_id}/advance"
+        )
+
     # --- 次元拡張(請求項9) ---
     def expand_dimension(self, added_dims: int, axis_labels: list[str]) -> dict[str, Any]:
         return self._c.post(

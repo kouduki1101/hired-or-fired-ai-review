@@ -94,6 +94,23 @@ class TestSdkRoundtrip:
         assert len(ndjson.strip().splitlines()) == manifest["total_events"]
         assert all(json.loads(line)["hash"] for line in ndjson.strip().splitlines())
 
+    def test_learning_rehatch_flow(self, aios: Client) -> None:
+        """P5: 学習系Rehatchを投入→進捗→完了で世代+1(Rehatch-in-Place)。"""
+        cohort = aios.cohorts.create(name="sdk-train", slot_count=4)
+        slot = cohort.get()["slots"][0]
+        slot_id, gen0 = slot["slot_id"], slot["generation"]
+
+        job = cohort.train_rehatch(slot_id, max_steps=3)
+        assert job["status"] in ("pending", "running")
+
+        applied = None
+        for _ in range(10):
+            applied = cohort.advance_training(slot_id, job["job_id"])
+            if applied["applied"]:
+                break
+        assert applied is not None and applied["committed"] is True
+        assert applied["generation"] == gen0 + 1
+
     def test_error_surface(self, base_url: str) -> None:
         """認証エラーがAiosApiError(status/aios_code)として現れる。"""
         with Client(base_url=base_url, api_key="wrong-key") as bad, \
