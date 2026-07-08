@@ -13,15 +13,29 @@ import pytest
 from aios_api.main import create_app
 from aios_api.telemetry import configure_telemetry, init_telemetry, instrument_app
 from fastapi.testclient import TestClient
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+_METRIC_READER = InMemoryMetricReader()
 
 
 @pytest.fixture(scope="module")
 def exporter() -> InMemorySpanExporter:
     exp = InMemorySpanExporter()
     # グローバルプロバイダは一度だけ構成できる(モジュール内で共有)
-    init_telemetry(span_exporter=exp)
+    init_telemetry(span_exporter=exp, metric_reader=_METRIC_READER)
     return exp
+
+
+def _metric_points(name: str) -> list:
+    data = _METRIC_READER.get_metrics_data()
+    points: list = []
+    for rm in data.resource_metrics:
+        for sm in rm.scope_metrics:
+            for metric in sm.metrics:
+                if metric.name == name:
+                    points.extend(metric.data.data_points)
+    return points
 
 
 @pytest.fixture()
@@ -67,6 +81,26 @@ def test_fastapi_server_span_emitted(client: TestClient, exporter: InMemorySpanE
     # FastAPI 自動計装が HTTP サーバスパンを生成する(ルートテンプレート名を含む)
     names = _span_names(exporter)
     assert any("/v1/cohorts" in n for n in names)
+
+
+def test_cycle_metrics_recorded(client: TestClient, exporter: InMemorySpanExporter) -> None:
+    cohort = client.post("/v1/cohorts", json={"name": "otelm", "slot_count": 4}).json()
+    cid = cohort["cohort_id"]
+    client.post(f"/v1/cohorts/{cid}/cycles/run")
+    # サイクル回数カウンタと所要時間ヒストグラムが記録される
+    assert any(p.value >= 1 for p in _metric_points("aios.cycles.run"))
+    hist = _metric_points("aios.cycle.duration")
+    assert hist and hist[0].count >= 1
+
+
+def test_task_route_metrics_recorded(client: TestClient, exporter: InMemorySpanExporter) -> None:
+    cohort = client.post("/v1/cohorts", json={"name": "otelm2", "slot_count": 4}).json()
+    cid = cohort["cohort_id"]
+    client.post(
+        f"/v1/cohorts/{cid}/tasks",
+        json={"input": {"messages": []}, "metadata": {"importance": "high"}},
+    )
+    assert any(p.value >= 1 for p in _metric_points("aios.tasks.routed"))
 
 
 def test_configure_disabled_without_env(monkeypatch: pytest.MonkeyPatch) -> None:

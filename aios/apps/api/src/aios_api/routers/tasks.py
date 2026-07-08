@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -14,7 +15,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from aios_api.store import STORE
-from aios_api.telemetry import tracer
+from aios_api.telemetry import route_duration_ms, tasks_routed, tracer
 
 router = APIRouter(tags=["tasks"])
 
@@ -58,8 +59,13 @@ async def submit_task(cohort_id: str, req: SubmitTaskRequest) -> TaskResponse:
     with tracer.start_as_current_span("aios.task.route") as span:
         span.set_attribute("aios.cohort_id", cohort_id)
         span.set_attribute("aios.importance", str(req.metadata.importance))
+        t0 = time.perf_counter()
         decision = route_task(meta, [s.view() for s in cohort.slots])
+        route_ms = (time.perf_counter() - t0) * 1000.0
         span.set_attribute("aios.routed_cluster", str(decision.cluster))
+    route_attrs = {"importance": str(req.metadata.importance), "cluster": str(decision.cluster)}
+    tasks_routed.add(1, route_attrs)
+    route_duration_ms.record(route_ms, route_attrs)
     slot = next(s for s in cohort.slots if s.slot_id == decision.chosen_slot_id)
 
     # リネージ: 担当時点の世代・判断理由をイベントとして固定記録(FR-GV-01)

@@ -63,7 +63,7 @@
 
 | ID | 要件 |
 |---|---|
-| NFR-OP-01 | 全コンポーネントが構造化ログ(JSON)+OpenTelemetry Trace/Metricsを出力。制御サイクルはトレースIDで一気通貫追跡可能 ※実装: `apps/api/telemetry.py`(FastAPI自動計装+`aios.cycle.run`/`aios.task.route` 手動スパン、OTLP/HTTP エクスポート。`AIOS_OTEL_OTLP_ENDPOINT` で有効化) |
+| NFR-OP-01 | 全コンポーネントが構造化ログ(JSON)+OpenTelemetry Trace/Metricsを出力。制御サイクルはトレースIDで一気通貫追跡可能 ※実装: `telemetry.py`(FastAPI自動計装+`aios.cycle.run`/`aios.task.route` 手動スパン、Metrics: `aios.tasks.routed`/`aios.cycles.run`/`aios.rehatches.committed` カウンタ + `aios.cycle.duration`/`aios.task.route.duration` ヒストグラム、OTLP/HTTP。`AIOS_OTEL_OTLP_ENDPOINT` で有効化)+ `logging_config.py`(1行1JSON、trace_id/span_id 自動相関) |
 | NFR-OP-02 | ヘルスチェック(liveness/readiness)、グレースフルシャットダウン(実行中Rehatchの安全完了または安全中断) |
 | NFR-OP-03 | 設定はコード化(宣言的YAML/API)。閾値・α・β等の変更はバージョン管理され即時ロールバック可能 |
 | NFR-OP-04 | Self-Hosted: Docker Compose(評価用)とHelm Chart(本番)を提供。エアギャップ環境向けオフラインバンドル(Enterprise) |

@@ -47,7 +47,9 @@ def create_app(
     oidc(またはAIOS_OIDC_ISSUER/AUDIENCE 環境変数)指定時は OIDC Bearer 認証+
     RBAC が有効になる(FR-TN-02 / NFR-SE-05)。"""
     from aios_api.auth import AuthMiddleware, resolve_api_keys
+    from aios_api.logging_config import configure_logging
 
+    configure_logging(os.environ.get("AIOS_LOG_LEVEL", "INFO"))
     url = database_url or os.environ.get("AIOS_DATABASE_URL")
     resolved_keys = resolve_api_keys(api_keys)
     resolved_oidc = oidc if oidc is not None else OidcConfig.from_env()
