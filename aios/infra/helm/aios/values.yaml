@@ -23,6 +23,8 @@ api:
   corsOrigins: "http://localhost:3000"
   # OpenTelemetry OTLP/HTTP エクスポート先(例: http://otel-collector:4318/v1/traces)。未指定は計装無効
   otlpEndpoint: ""
+  # 常駐駆動(Autopilot)のサイクル間隔秒。設定すると全コホートを自動運転(例: "300")。未指定は手動/API制御
+  autopilotIntervalSeconds: ""
   # 既存Secretを使う場合は指定(キー: databaseUrl, apiKeys)。指定時はchart管理Secretを作らない
   existingSecret: ""
   resources:
