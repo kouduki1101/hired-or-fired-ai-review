@@ -112,6 +112,12 @@ def select_rehatch_targets(slots, cfg) -> list[Selection]:
 archive* = argmax_{a ∈ archives, a.distill_allowed} [ cos(a.tv, TV_t) · score_weight(a.best_score) ]
 ```
 
+実装: `aios_core.lineage.archive`(類似度は適合度と同じ (cos+1)/2 正規化、score_weight は
+[0,1] クリップ、次元拡張後は共通次元で比較)。Rehatch 確定時に退役世代の構成・成績・当時の
+TV を `CohortRuntime.archives` へ追加し、以後の Rehatch は archive* の system_prompt 等を
+継承する(`_execute_rehatch`、REHATCH_COMPLETED に archived_as / inherited_from を記録)。
+※アーカイブレジストリは現状プロセス内(DB 永続化 KnowledgeArchiveRow への書き出しは次期)。
+
 ### 戦略A: TV-Init(コンテキスト注入, ¶0165)
 ```
 context_vector_new = TV_t + N(0, σ·noise_amount)        # バックボーン/基本構成は維持
