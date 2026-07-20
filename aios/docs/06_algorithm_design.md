@@ -116,7 +116,9 @@ archive* = argmax_{a ∈ archives, a.distill_allowed} [ cos(a.tv, TV_t) · score
 [0,1] クリップ、次元拡張後は共通次元で比較)。Rehatch 確定時に退役世代の構成・成績・当時の
 TV を `CohortRuntime.archives` へ追加し、以後の Rehatch は archive* の system_prompt 等を
 継承する(`_execute_rehatch`、REHATCH_COMPLETED に archived_as / inherited_from を記録)。
-※アーカイブレジストリは現状プロセス内(DB 永続化 KnowledgeArchiveRow への書き出しは次期)。
+レジストリは `save_cohort`/`load_cohort` で `knowledge_archives` テーブルへ永続化される
+(追記のみ・archive_id で重複回避。当時の TV は `teacher_vectors` に source="archive" で
+正規保存し tv_id 参照)。再起動後も継承候補として復元される。
 
 ### 戦略A: TV-Init(コンテキスト注入, ¶0165)
 ```

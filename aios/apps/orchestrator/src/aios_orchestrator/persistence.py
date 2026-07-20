@@ -18,11 +18,18 @@ from datetime import UTC, datetime
 
 import numpy as np
 from aios_adapters.spi import ModelAdapter, ModelConfig
+from aios_core.lineage.archive import ArchiveEntry
 from aios_core.lineage.events import GENESIS_HASH, EventChainBuilder
 from aios_core.lineage.replay import replay_slot
 from aios_core.types import CohortPhase, DynamicsSignal, HealthThresholds, SlotStatus
 from aios_storage.event_store import EventStore
-from aios_storage.models import CohortRow, ModelSnapshotRow, SlotRow, TeacherVectorRow
+from aios_storage.models import (
+    CohortRow,
+    KnowledgeArchiveRow,
+    ModelSnapshotRow,
+    SlotRow,
+    TeacherVectorRow,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -161,6 +168,37 @@ async def save_cohort(
         else:
             existing.config = _config_to_json(config)
 
+    # 知識アーカイブ(docs/06 §7)は追記のみ: 未保存の archive_id だけ挿入する。
+    # TV は teacher_vectors に source="archive" で保存し tv_id で参照(docs/04 正規形)
+    for entry in cohort.archives:
+        if await session.get(KnowledgeArchiveRow, entry.archive_id) is not None:
+            continue
+        tv_id = str(uuid.uuid4())
+        session.add(
+            TeacherVectorRow(
+                tv_id=tv_id,
+                cohort_id=cohort.cohort_id,
+                dimension=int(entry.tv.shape[0]),
+                vector=[float(x) for x in entry.tv],
+                source="archive",
+                measured_at=entry.archived_at,
+            )
+        )
+        session.add(
+            KnowledgeArchiveRow(
+                archive_id=entry.archive_id,
+                cohort_id=cohort.cohort_id,
+                kind="rehatch_retired",
+                source_slot_id=entry.source_slot_id,
+                source_generation=entry.source_generation,
+                tv_id=tv_id,
+                config=dict(entry.config),
+                best_score=entry.best_score,
+                distill_allowed=entry.distill_allowed,
+                archived_at=entry.archived_at,
+            )
+        )
+
     await session.flush()
 
 
@@ -240,6 +278,32 @@ async def load_cohort(
             )
         )
 
+    # 知識アーカイブの復元(tv_id 参照から当時のTVベクトルを引く)
+    archive_rows = (
+        await session.scalars(
+            select(KnowledgeArchiveRow)
+            .where(KnowledgeArchiveRow.cohort_id == cohort_id)
+            .order_by(KnowledgeArchiveRow.archived_at, KnowledgeArchiveRow.archive_id)
+        )
+    ).all()
+    archives: list[ArchiveEntry] = []
+    for ar in archive_rows:
+        ar_tv = await session.get(TeacherVectorRow, ar.tv_id) if ar.tv_id else None
+        if ar_tv is None:
+            continue  # TV欠落アーカイブは継承候補にしない(破損時の縮退)
+        archives.append(
+            ArchiveEntry(
+                archive_id=ar.archive_id,
+                tv=np.asarray(ar_tv.vector, dtype=np.float64),
+                config=dict(ar.config or {}),
+                best_score=float(ar.best_score or 0.0),
+                source_slot_id=ar.source_slot_id or "",
+                source_generation=int(ar.source_generation or 0),
+                archived_at=_as_utc(ar.archived_at) or datetime.now(UTC),
+                distill_allowed=ar.distill_allowed,
+            )
+        )
+
     cohort = CohortRuntime(
         cohort_id=cohort_id,
         phase=CohortPhase(row.phase),
@@ -251,5 +315,6 @@ async def load_cohort(
         step_no=int(state.get("step_no", 0)),
         value_axes={int(k): v for k, v in state.get("value_axes", {}).items()},
         approval_mode=state.get("approval_mode", "auto"),
+        archives=archives,
     )
     return cohort
