@@ -209,6 +209,10 @@ class DemoStore:
         tenant = current_tenant.get()
         return [c for cid, c in self._cohorts.items() if self.tenant_of(cid) == tenant]
 
+    def all_cohort_ids(self) -> list[str]:
+        """テナント横断の全コホートID(Autopilot起動などプロセス内部処理専用)。"""
+        return list(self._cohorts)
+
     # --- タスク割当シェア(支配的モデル検出の入力) ---
     def record_assignment(self, cohort_id: str, slot_id: str) -> None:
         counts = self._task_counts[cohort_id]

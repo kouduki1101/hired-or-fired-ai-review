@@ -57,18 +57,26 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        from aios_api.autopilot import AUTOPILOT, env_interval
+        from aios_api.store import STORE
+
         engine = None
         if url:
             from aios_storage.schema import create_all
             from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-            from aios_api.store import STORE
-
             engine = create_async_engine(url)
             await create_all(engine)
             STORE.attach_db(async_sessionmaker(engine, expire_on_commit=False))
             await STORE.rehydrate_all()
+        # 常駐駆動(FR-LC-03): AIOS_AUTOPILOT_INTERVAL_SECONDS 設定時は
+        # 既存(rehydrate済み)全コホートの制御ループを自動開始する
+        interval = env_interval()
+        if interval is not None:
+            for cohort_id in STORE.all_cohort_ids():
+                AUTOPILOT.start(cohort_id, interval)
         yield
+        await AUTOPILOT.stop_all()  # グレースフル(実行中サイクルの完了を待つ)
         if engine is not None:
             await engine.dispose()
 

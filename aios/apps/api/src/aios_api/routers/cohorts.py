@@ -73,6 +73,12 @@ async def create_cohort(req: CreateCohortRequest) -> CohortResponse:
     cohort.approval_mode = req.approval_mode
     STORE.set_name(cohort.cohort_id, req.name)
     await STORE.persist(cohort.cohort_id)
+    # 常駐駆動が環境変数で有効なら、新規コホートも自動運転に載せる(FR-LC-03)
+    from aios_api.autopilot import AUTOPILOT, env_interval
+
+    interval = env_interval()
+    if interval is not None:
+        AUTOPILOT.start(cohort.cohort_id, interval)
     return _to_response(cohort)
 
 

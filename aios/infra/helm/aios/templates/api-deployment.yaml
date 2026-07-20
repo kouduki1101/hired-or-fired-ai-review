@@ -53,6 +53,10 @@ spec:
             - name: AIOS_OTEL_OTLP_ENDPOINT
               value: {{ .Values.api.otlpEndpoint | quote }}
             {{- end }}
+            {{- if .Values.api.autopilotIntervalSeconds }}
+            - name: AIOS_AUTOPILOT_INTERVAL_SECONDS
+              value: {{ .Values.api.autopilotIntervalSeconds | quote }}
+            {{- end }}
           livenessProbe:
             httpGet: { path: /healthz, port: http }
             initialDelaySeconds: 5

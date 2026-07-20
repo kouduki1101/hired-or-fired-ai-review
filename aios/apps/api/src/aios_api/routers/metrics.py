@@ -7,16 +7,14 @@ P2で常駐スケジューラ(CycleScheduler)がこのエンドポイントと�
 from __future__ import annotations
 
 import math
-import time
 
 from aios_core.types import HealthStatus
-from aios_orchestrator.cycle import CycleConfig, run_cycle
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from aios_api.logging_config import log_event
+from aios_api.autopilot import AUTOPILOT, env_interval
+from aios_api.cycle_service import execute_cycle
 from aios_api.store import STORE
-from aios_api.telemetry import cycle_duration_ms, cycles_run, rehatches_committed, tracer
 
 router = APIRouter(tags=["metrics"])
 
@@ -97,18 +95,44 @@ def _summary(result) -> CycleSummary:
 
 
 class LoopControlRequest(BaseModel):
-    action: str  # pause / resume / dry_run_on / dry_run_off
+    action: str  # pause / resume / dry_run_on / dry_run_off / autopilot_on / autopilot_off
+    interval_seconds: float | None = None  # autopilot_on 用(未指定は環境変数→30s)
 
 
 class LoopStateResponse(BaseModel):
     cohort_id: str
     loop_state: str
+    autopilot: bool = False
+    autopilot_interval_seconds: float | None = None
+
+
+def _loop_response(cohort_id: str) -> LoopStateResponse:
+    return LoopStateResponse(
+        cohort_id=cohort_id,
+        loop_state=STORE.loop_state(cohort_id),
+        autopilot=AUTOPILOT.is_running(cohort_id),
+        autopilot_interval_seconds=AUTOPILOT.interval_of(cohort_id),
+    )
 
 
 @router.post("/cohorts/{cohort_id}/loop", response_model=LoopStateResponse)
 async def control_loop(cohort_id: str, req: LoopControlRequest) -> LoopStateResponse:
-    """ループ制御(FR-LC-03 / FR-UI-07)。操作は監査対象。"""
+    """ループ制御(FR-LC-03 / FR-UI-07)。操作は監査対象。
+
+    autopilot_on/off は常駐駆動(Autopilot)の開始・停止。pause は autopilot を
+    止めずにサイクルだけスキップさせる(サイクル境界で反映)。
+    """
     STORE.get_cohort(cohort_id)  # 404チェック
+    if req.action == "autopilot_on":
+        interval = req.interval_seconds or env_interval() or 30.0
+        if interval <= 0:
+            raise HTTPException(status_code=422, detail="interval_seconds must be positive")
+        AUTOPILOT.start(cohort_id, interval)
+        return _loop_response(cohort_id)
+    if req.action == "autopilot_off":
+        await AUTOPILOT.stop(cohort_id)
+        return _loop_response(cohort_id)
+
     transitions = {
         "pause": "PAUSED",
         "resume": "RUNNING",
@@ -118,7 +142,7 @@ async def control_loop(cohort_id: str, req: LoopControlRequest) -> LoopStateResp
     if req.action not in transitions:
         raise HTTPException(status_code=422, detail=f"unknown action: {req.action}")
     STORE.set_loop_state(cohort_id, transitions[req.action])
-    return LoopStateResponse(cohort_id=cohort_id, loop_state=STORE.loop_state(cohort_id))
+    return _loop_response(cohort_id)
 
 
 @router.post("/cohorts/{cohort_id}/cycles/run", response_model=CycleSummary)
@@ -126,64 +150,12 @@ async def run_control_cycle(cohort_id: str, dry_run: bool = False) -> CycleSumma
     """制御サイクルを1回実行する(明細書 図10のメインループ1周)。
 
     ループ状態を尊重する: PAUSED中は409、DRY_RUN中は強制的に判断のみ。
-    (常駐駆動は aios_orchestrator.scheduler.CycleScheduler が同じ規則で行う)
+    実処理は cycle_service.execute_cycle(常駐駆動 Autopilot と共通)。
     """
-    cohort = STORE.get_cohort(cohort_id)
-    loop_state = STORE.loop_state(cohort_id)
-    if loop_state == "PAUSED":
+    STORE.get_cohort(cohort_id)  # 404チェック
+    if STORE.loop_state(cohort_id) == "PAUSED":
         raise HTTPException(status_code=409, detail="control loop is paused")
-    effective_dry_run = dry_run or loop_state == "DRY_RUN"
-    previous = STORE.last_cycle(cohort_id)
-    defer = cohort.approval_mode == "manual"  # 承認モード(FR-GV-05)
-    with tracer.start_as_current_span("aios.cycle.run") as span:
-        span.set_attribute("aios.cohort_id", cohort_id)
-        span.set_attribute("aios.dry_run", effective_dry_run)
-        t0 = time.perf_counter()
-        result = await run_cycle(
-            cohort, CycleConfig(dry_run=effective_dry_run, defer_rehatch=defer)
-        )
-        elapsed_ms = (time.perf_counter() - t0) * 1000.0
-        span.set_attribute("aios.step_no", result.step_no)
-        span.set_attribute("aios.health", str(result.health))
-        span.set_attribute("aios.rehatch_count", len(result.rehatched))
-    committed = sum(1 for o in result.rehatched if o.committed)
-    # メトリクス(低カーディナリティ属性=health/dry_run のみ)
-    attrs = {"health": str(result.health), "dry_run": effective_dry_run}
-    cycles_run.add(1, attrs)
-    cycle_duration_ms.record(elapsed_ms, attrs)
-    if committed:
-        rehatches_committed.add(committed)
-    log_event(
-        "cycle.completed",
-        cohort_id=cohort_id,
-        step_no=result.step_no,
-        health=str(result.health),
-        dissipation=None if result.dissipation != result.dissipation else result.dissipation,
-        rehatch_committed=committed,
-        dry_run=effective_dry_run,
-        duration_ms=round(elapsed_ms, 2),
-    )
-    STORE.set_last_cycle(cohort_id, result)
-    for p_r in result.pending_rehatch:
-        STORE.add_approval(
-            cohort_id=cohort_id,
-            action_type="rehatch",
-            payload={"slot_id": p_r.slot_id, "reason": p_r.reason},
-        )
-    if not result.dry_run:
-        STORE.bump_usage(cohort_id, "cycles_run")
-        STORE.bump_usage(
-            cohort_id, "probes_executed", len(cohort.slots) - result.probe_missing
-        )
-        STORE.bump_usage(
-            cohort_id, "rehatches_committed",
-            sum(1 for o in result.rehatched if o.committed),
-        )
-    # Webhook通知(FR-EX-01)と永続化
-    await STORE.notifier.emit_from_cycle(
-        cohort_id, str(previous.health) if previous else None, result
-    )
-    await STORE.persist(cohort_id)
+    result = await execute_cycle(cohort_id, dry_run=dry_run)
     return _summary(result)
 
 
