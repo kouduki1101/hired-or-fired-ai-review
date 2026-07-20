@@ -83,3 +83,21 @@ jobs:
       - name: Build (next build = type-check + compile)
         working-directory: aios/apps/dashboard
         run: npm run build
+
+  sdk-ts:
+    # TypeScript SDK: strict 型チェック + hermetic 単体テスト(fetch 注入)。
+    # node --test のグロブ指定は Node 21+ のためローカルと同じ 22 を使う
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: aios/packages/sdk-ts/package-lock.json
+      - name: Install dependencies
+        working-directory: aios/packages/sdk-ts
+        run: npm ci
+      - name: Type-check + test
+        working-directory: aios/packages/sdk-ts
+        run: npm test

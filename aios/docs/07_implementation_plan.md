@@ -145,7 +145,7 @@
 | P2 | 5週 | ✅ 完了(M2=図16ダッシュボード実画面検証済み。ルーティングp95計測は未実施) |
 | P3 | 5週 | ✅ 完了(M3=開示請求API・監査エクスポート・安全境界・次元拡張・承認ワークフロー) |
 | P4 | 6週 | ✅ 完了。前半(課金計測・APIキー認証・テナント分離)に加え、後半(Alembic、Helm、CI強化、OIDC/RBAC、負荷試験、ペンテスト準備、SDK公開手続き)を実装 |
-| P5 | 継続 | 着手(OTel Trace/Metrics+構造化ログ=完了、学習系 Rehatch 調停+API/SDK/UI=完了、Autopilot 常駐駆動=完了。残: 本番 Trainer 実装=実 GPU 蒸留/LoRA) |
+| P5 | 継続 | 着手(OTel Trace/Metrics+構造化ログ、学習系 Rehatch 調停+API/SDK/UI、Autopilot 常駐駆動、知識アーカイブ継承+DB永続化、TypeScript SDK=完了。残: 本番 Trainer 実装=実 GPU 蒸留/LoRA) |
 
 品質状態: Pythonテスト219件+API契約テスト(請求項1〜10保証)green、1 skipped(PG結合はCIで実走)。
 lint(ruff)green、依存の既知脆弱性 0(pip-audit)。P5でOpenTelemetry計装+学習系Rehatch調停を追加。
